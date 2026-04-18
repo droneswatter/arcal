@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CycloneDDS configuration for same-host (loopback) testing.
+     Forces unicast discovery on lo so both participants can find each other
+     on WSL2 and other environments where multicast on loopback is unreliable.
+     Set via: export CYCLONEDDS_URI=file:///path/to/cyclonedds_localhost.xml -->
+<CycloneDDS>
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <!-- Bind exclusively to loopback; allow multicast on lo for SPDP -->
+        <NetworkInterface name="lo" multicast="true"/>
+      </Interfaces>
+    </General>
+    <Discovery>
+      <!-- Unicast peer at localhost ensures discovery without multicast routing -->
+      <Peers>
+        <Peer Address="127.0.0.1"/>
+      </Peers>
+      <!-- auto assigns each participant a unique index → unique unicast reply port,
+           which is what enables SO_REUSEPORT-free co-existence on the same host -->
+      <ParticipantIndex>auto</ParticipantIndex>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

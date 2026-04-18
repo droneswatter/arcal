@@ -1,0 +1,22 @@
+build/
+cmake-build-*/
+include/uci/type/
+src/generated/
+tools/schema_compiler/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# C++ build artifacts
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.exe
+
+# CMake user files
+CMakeUserPresets.json
+
+# Cache / tooling
+.cache/
+.ccache/

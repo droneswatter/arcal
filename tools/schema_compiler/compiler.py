@@ -1,0 +1,985 @@
+#!/usr/bin/env python3
+"""
+arcal Schema Compiler — XSD → C++ Accessor headers.
+
+Usage:
+    python compiler.py --schema <xsd_dir> --out <include_dir> [--ns-map <file>]
+
+Reads all .xsd files in <xsd_dir>, generates one header per XSD global element
+and complex/simple type into <include_dir>/uci/type/.
+
+Namespace mapping (OMSC-SPC-008 §4, extensible without code modification):
+    https://www.vdl.afrl.af.mil/programs/oam  →  uci
+    http://www.w3.org/2001/XMLSchema           →  xs
+Additional mappings can be supplied via --ns-map (JSON file: {"uri": "cxx_ns"}).
+"""
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+try:
+    from lxml import etree
+    from jinja2 import Environment, FileSystemLoader
+except ImportError:
+    print("ERROR: Install dependencies: pip install lxml jinja2", file=sys.stderr)
+    sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# Default namespace → C++ namespace mapping (OMSC-SPC-008 Table 4.0-1)
+# This table must not be overridden by external mappings.
+# ---------------------------------------------------------------------------
+PROTECTED_NS_MAP = {
+    "https://www.vdl.afrl.af.mil/programs/oam": "uci",
+    "http://www.w3.org/2001/XMLSchema": "xs",
+}
+
+XSD_NS = "http://www.w3.org/2001/XMLSchema"
+OMS_NS = "https://www.vdl.afrl.af.mil/programs/oam"
+
+# ---------------------------------------------------------------------------
+# XSD parsing helpers
+# ---------------------------------------------------------------------------
+
+def load_ns_map(path: Path) -> dict:
+    with open(path) as f:
+        user_map = json.load(f)
+    for key in PROTECTED_NS_MAP:
+        if key in user_map:
+            print(f"WARNING: ignoring attempt to override protected namespace '{key}'", file=sys.stderr)
+            del user_map[key]
+    return {**PROTECTED_NS_MAP, **user_map}
+
+
+def xsd_name_to_cxx(name: str) -> str:
+    """Convert XSD type name to CamelCase C++ class name."""
+    if not name:
+        return name
+    # Remove any namespace prefix
+    if ":" in name:
+        name = name.split(":")[-1]
+    return name[0].upper() + name[1:]
+
+
+def is_optional(element) -> bool:
+    return element.get("minOccurs", "1") == "0"
+
+
+def max_occurs(element) -> str:
+    return element.get("maxOccurs", "1")
+
+
+def is_bounded_list(element) -> bool:
+    mo = max_occurs(element)
+    return mo != "1" and mo != "unbounded"
+
+
+def is_unbounded_list(element) -> bool:
+    return max_occurs(element) == "unbounded"
+
+
+def is_list(element) -> bool:
+    return is_bounded_list(element) or is_unbounded_list(element)
+
+
+# ---------------------------------------------------------------------------
+# Schema model classes
+# ---------------------------------------------------------------------------
+
+class FieldModel:
+    def __init__(self, name, type_name, optional=False, list_kind=None,
+                 min_occurs=0, max_occurs_val=1, resolved_cxx_type=None):
+        self.name = name
+        self.cxx_name = xsd_name_to_cxx(name)
+        self.type_name = type_name
+        # Use C++ primitive directly if available, else generate class name
+        self.cxx_type = resolved_cxx_type if resolved_cxx_type else xsd_name_to_cxx(type_name)
+        self.optional = optional
+        self.list_kind = list_kind  # None, "bounded", "unbounded"
+        self.min_occurs = min_occurs
+        self.max_occurs_val = max_occurs_val
+
+
+class ChoiceModel:
+    def __init__(self, variants):
+        self.variants = variants  # list of FieldModel
+
+
+class TypeModel:
+    def __init__(self, name, fields=None, choices=None, base_type=None,
+                 enum_values=None, is_string_restriction=False):
+        self.name = name
+        self.cxx_name = xsd_name_to_cxx(name)
+        self.fields = fields or []
+        self.choices = choices or []
+        self.base_type = base_type
+        self.enum_values = enum_values
+        self.is_enum = enum_values is not None
+        self.is_string_restriction = is_string_restriction
+
+
+class GlobalElementModel:
+    def __init__(self, name, type_name):
+        self.name = name
+        self.cxx_name = xsd_name_to_cxx(name)
+        self.type_name = type_name
+        self.cxx_type = xsd_name_to_cxx(type_name)
+
+
+# ---------------------------------------------------------------------------
+# XSD parser
+# ---------------------------------------------------------------------------
+
+class SchemaParser:
+    def __init__(self, schema_dir: Path):
+        self.schema_dir = schema_dir
+        self.types: dict[str, TypeModel] = {}
+        self.global_elements: list[GlobalElementModel] = []
+        self._trees: list[etree._ElementTree] = []
+
+    def parse_all(self):
+        for xsd_file in sorted(self.schema_dir.glob("*.xsd")):
+            tree = etree.parse(str(xsd_file))
+            self._trees.append(tree)
+
+        for tree in self._trees:
+            root = tree.getroot()
+            self._parse_schema(root)
+
+    def _parse_schema(self, root):
+        ns = {"xs": XSD_NS}
+
+        # Global elements
+        for elem in root.findall("xs:element", ns):
+            name = elem.get("name")
+            type_name = elem.get("type", "").split(":")[-1]
+            if name:
+                self.global_elements.append(GlobalElementModel(name, type_name))
+
+        # Complex types
+        for ct in root.findall("xs:complexType", ns):
+            model = self._parse_complex_type(ct, ns)
+            if model:
+                self.types[model.name] = model
+
+        # Simple types (enumerations)
+        for st in root.findall("xs:simpleType", ns):
+            model = self._parse_simple_type(st, ns)
+            if model:
+                self.types[model.name] = model
+
+    def _parse_complex_type(self, ct, ns) -> TypeModel | None:
+        name = ct.get("name")
+        if not name:
+            return None
+
+        fields = []
+        choices = []
+        base_type = None
+
+        # Extension / restriction
+        for content_tag in ["xs:complexContent", "xs:simpleContent"]:
+            content = ct.find(content_tag, ns)
+            if content is not None:
+                for ext in content.findall("xs:extension", ns):
+                    base_type = ext.get("base", "").split(":")[-1]
+                    for seq in ext.findall("xs:sequence", ns):
+                        fields.extend(self._parse_sequence(seq, ns))
+                    for ch in ext.findall("xs:choice", ns):
+                        choices.append(self._parse_choice(ch, ns))
+
+        # Direct sequence
+        for seq in ct.findall("xs:sequence", ns):
+            fields.extend(self._parse_sequence(seq, ns))
+
+        # Direct choice
+        for ch in ct.findall("xs:choice", ns):
+            choices.append(self._parse_choice(ch, ns))
+
+        return TypeModel(name, fields=fields, choices=choices, base_type=base_type)
+
+    def _parse_sequence(self, seq, ns) -> list:
+        fields = []
+        for elem in seq.findall("xs:element", ns):
+            field = self._element_to_field(elem)
+            if field:
+                fields.append(field)
+        return fields
+
+    def _parse_choice(self, choice, ns) -> ChoiceModel:
+        variants = []
+        for elem in choice.findall("xs:element", ns):
+            field = self._element_to_field(elem)
+            if field:
+                variants.append(field)
+        return ChoiceModel(variants)
+
+    def _element_to_field(self, elem) -> FieldModel | None:
+        name = elem.get("name") or elem.get("ref", "").split(":")[-1]
+        if not name:
+            return None
+        # Skip anonymous inline types and untyped placeholder elements
+        if elem.get("type") is None and elem.get("ref") is None:
+            return None
+        type_name = elem.get("type", name).split(":")[-1]
+
+        min_occ = int(elem.get("minOccurs", "1"))
+        max_occ_str = elem.get("maxOccurs", "1")
+        max_occ = -1 if max_occ_str == "unbounded" else int(max_occ_str)
+
+        optional  = min_occ == 0 and max_occ == 1
+        list_kind = None
+        if max_occ == -1:
+            list_kind = "unbounded"
+        elif max_occ > 1:
+            list_kind = "bounded"
+
+        # Map XSD primitives to C++ built-in types directly
+        resolved_type = CXX_PRIMITIVE_MAP.get(type_name, None)
+        return FieldModel(name, type_name, optional=optional,
+                          list_kind=list_kind, min_occurs=min_occ,
+                          max_occurs_val=max_occ,
+                          resolved_cxx_type=resolved_type)
+
+    def _parse_simple_type(self, st, ns) -> TypeModel | None:
+        name = st.get("name")
+        if not name:
+            return None
+
+        restriction = st.find("xs:restriction", ns)
+        if restriction is None:
+            return None
+
+        enum_values = []
+        for enum in restriction.findall("xs:enumeration", ns):
+            enum_values.append(enum.get("value"))
+
+        if enum_values:
+            return TypeModel(name, enum_values=enum_values)
+
+        # Non-enumeration restriction (length/pattern facets): wrap the base type
+        base = restriction.get("base", "xs:string").split(":")[-1]
+        resolved = CXX_PRIMITIVE_MAP.get(base, "std::string")
+        return TypeModel(name, base_type=resolved, fields=[], is_string_restriction=True)
+
+
+# ---------------------------------------------------------------------------
+# Code generation
+# ---------------------------------------------------------------------------
+
+ACCESSOR_H_TEMPLATE = """\
+#pragma once
+// Generated by arcal schema compiler. DO NOT EDIT.
+
+#include "uci/base/Accessor.h"
+{% if type.base_type and type.base_type not in primitive_types %}\
+#include "uci/type/{{ type.base_type }}.h"
+{% endif %}\
+{% if global_element %}\
+#include "uci/base/AbstractServiceBusConnection.h"
+#include "uci/base/Listener.h"
+#include "uci/base/Reader.h"
+#include "uci/base/Writer.h"
+{% endif %}\
+{% for field in type.fields %}\
+{% if field.type_name not in primitive_types %}\
+#include "uci/type/{{ field.cxx_type }}.h"
+{% endif %}\
+{% endfor %}\
+{% for choice in type.choices %}\
+{% for v in choice.variants %}\
+{% if v.type_name not in primitive_types %}\
+#include "uci/type/{{ v.cxx_type }}.h"
+{% endif %}\
+{% endfor %}\
+{% endfor %}\
+#include "uci/base/BoundedList.h"
+#include "uci/base/SimpleList.h"
+#include <cstdint>
+#include <string>
+
+namespace uci {
+namespace type {
+
+{% if type.base_type and type.base_type not in primitive_types %}\
+class {{ type.cxx_name }} : public uci::type::{{ type.base_type }} {
+{% else %}\
+class {{ type.cxx_name }} : public uci::base::Accessor {
+{% endif %}\
+public:
+    AccessorType getAccessorType() const override { return ACCESSOR_TYPE_COMPLEX; }
+    const std::string& typeName() const override {
+        static const std::string kName{"{{ type.name }}"};
+        return kName;
+    }
+    void reset() override { *this = {{ type.cxx_name }}{}; }
+{% if global_element %}\
+
+    class Listener : public uci::base::Listener {
+    public:
+        virtual void handleMessage(const {{ type.cxx_name }}& message) = 0;
+        virtual ~Listener() = default;
+    protected:
+        Listener() = default;
+        Listener(const Listener&) = delete;
+        Listener& operator=(const Listener&) = delete;
+    };
+
+    class Reader : public uci::base::Reader {
+    public:
+        virtual void addListener(Listener& listener) = 0;
+        virtual void removeListener(Listener& listener) = 0;
+        virtual unsigned long read(unsigned long timeout, unsigned long numberOfMessages, Listener& listener) = 0;
+        virtual unsigned long readNoWait(unsigned long numberOfMessages, Listener& listener) = 0;
+        virtual void close() = 0;
+        virtual ~Reader() = default;
+        friend class {{ type.cxx_name }};
+    protected:
+        Reader() = default;
+        Reader(const Reader&) = delete;
+        Reader& operator=(const Reader&) = delete;
+    };
+
+    class Writer : public uci::base::Writer {
+    public:
+        virtual void write({{ type.cxx_name }}& accessor) = 0;
+        virtual void close() = 0;
+        friend class {{ type.cxx_name }};
+    protected:
+        Writer() = default;
+        Writer(const Writer&) = delete;
+        Writer& operator=(const Writer&) = delete;
+        virtual ~Writer() = default;
+    };
+
+    static Reader& createReader(const std::string& topic,
+                                uci::base::AbstractServiceBusConnection* asb);
+    static void    destroyReader(Reader& reader);
+    static Writer& createWriter(const std::string& topic,
+                                uci::base::AbstractServiceBusConnection* asb);
+    static void    destroyWriter(Writer& writer);
+{% endif %}\
+
+{% for field in type.fields %}\
+{% if field.list_kind == "bounded" %}\
+    uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}>& get{{ field.cxx_name }}() { return {{ field.name }}_; }
+    const uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}>& get{{ field.cxx_name }}() const { return {{ field.name }}_; }
+{% elif field.list_kind == "unbounded" %}\
+    uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}>& get{{ field.cxx_name }}() { return {{ field.name }}_; }
+    const uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}>& get{{ field.cxx_name }}() const { return {{ field.name }}_; }
+{% elif field.optional %}\
+    bool has{{ field.cxx_name }}() const { return has{{ field.cxx_name }}_; }
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& enable{{ field.cxx_name }}() { has{{ field.cxx_name }}_ = true; return {{ field.name }}_; }
+    void clear{{ field.cxx_name }}() { has{{ field.cxx_name }}_ = false; }
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() { return {{ field.name }}_; }
+    const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const { return {{ field.name }}_; }
+{% else %}\
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() { return {{ field.name }}_; }
+    const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const { return {{ field.name }}_; }
+    void set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) { {{ field.name }}_ = v; }
+{% endif %}\
+{% endfor %}\
+
+{% for choice in type.choices %}\
+    enum {{ type.cxx_name }}ChoiceOrdinalEnum {
+{% for v in choice.variants %}\
+        CHOICE_{{ v.cxx_name | upper }},
+{% endfor %}\
+        CHOICE_NONE
+    };
+    {{ type.cxx_name }}ChoiceOrdinalEnum get{{ type.cxx_name }}ChoiceOrdinal() const { return choiceOrdinal_; }
+{% for v in choice.variants %}\
+    bool is{{ v.cxx_name }}() const { return choiceOrdinal_ == CHOICE_{{ v.cxx_name | upper }}; }
+    {{ v.cxx_type | qualify(primitive_types, v.type_name) }}& choose{{ v.cxx_name }}() { choiceOrdinal_ = CHOICE_{{ v.cxx_name | upper }}; return choice{{ v.cxx_name }}_; }
+    const {{ v.cxx_type | qualify(primitive_types, v.type_name) }}& get{{ v.cxx_name }}() const { return choice{{ v.cxx_name }}_; }
+{% endfor %}\
+{% endfor %}\
+
+    static std::string getUCITypeVersion() { return "{{ uci_version }}"; }
+
+    {{ type.cxx_name }}() = default;
+    {{ type.cxx_name }}(const {{ type.cxx_name }}&) = default;
+    {{ type.cxx_name }}& operator=(const {{ type.cxx_name }}&) = default;
+    ~{{ type.cxx_name }}() override = default;
+
+private:
+{% for field in type.fields %}\
+{% if field.list_kind == "bounded" %}\
+    uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}> {{ field.name }}_;
+{% elif field.list_kind == "unbounded" %}\
+    uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}> {{ field.name }}_;
+{% elif field.optional %}\
+    bool has{{ field.cxx_name }}_{false};
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }} {{ field.name }}_;
+{% else %}\
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }} {{ field.name }}_;
+{% endif %}\
+{% endfor %}\
+{% for choice in type.choices %}\
+    {{ type.cxx_name }}ChoiceOrdinalEnum choiceOrdinal_{ CHOICE_NONE };
+{% for v in choice.variants %}\
+    {{ v.cxx_type | qualify(primitive_types, v.type_name) }} choice{{ v.cxx_name }}_;
+{% endfor %}\
+{% endfor %}\
+};
+
+} // namespace type
+} // namespace uci
+"""
+
+ENUM_H_TEMPLATE = """\
+#pragma once
+// Generated by arcal schema compiler. DO NOT EDIT.
+
+#include "uci/base/Accessor.h"
+#include <string>
+#include <stdexcept>
+
+namespace uci {
+namespace type {
+
+class {{ type.cxx_name }} : public uci::base::Accessor {
+public:
+    enum EnumerationItem {
+{% for v in type.enum_values %}\
+        {{ v | sanitize_enum }},
+{% endfor %}\
+    };
+
+    AccessorType getAccessorType() const override { return ACCESSOR_TYPE_ENUMERATION; }
+    void reset() override { value_ = static_cast<EnumerationItem>(0); }
+    const std::string& typeName() const override {
+        static const std::string kName{"{{ type.name }}"};
+        return kName;
+    }
+
+    void setValue(EnumerationItem v) { value_ = v; }
+    EnumerationItem getValue() const { return value_; }
+
+    static int getNumberOfItems() { return {{ type.enum_values | length }}; }
+    bool isValid() const { return value_ >= 0 && value_ < getNumberOfItems(); }
+
+    std::string toName() const {
+        static const char* names[] = {
+{% for v in type.enum_values %}\
+            "{{ v }}",
+{% endfor %}\
+        };
+        return names[static_cast<int>(value_)];
+    }
+
+    static {{ type.cxx_name }} fromName(const std::string& name) {
+        {{ type.cxx_name }} result;
+        static const char* names[] = {
+{% for v in type.enum_values %}\
+            "{{ v }}",
+{% endfor %}\
+        };
+        for (int i = 0; i < getNumberOfItems(); ++i) {
+            if (name == names[i]) { result.value_ = static_cast<EnumerationItem>(i); return result; }
+        }
+        throw std::invalid_argument("{{ type.cxx_name }}::fromName: unknown value: " + name);
+    }
+
+    void setValueFromName(const std::string& name) { *this = fromName(name); }
+
+    bool operator==(const {{ type.cxx_name }}& rhs) const { return value_ == rhs.value_; }
+    bool operator!=(const {{ type.cxx_name }}& rhs) const { return value_ != rhs.value_; }
+    bool operator<(const {{ type.cxx_name }}& rhs)  const { return value_ <  rhs.value_; }
+    bool operator<=(const {{ type.cxx_name }}& rhs) const { return value_ <= rhs.value_; }
+    bool operator>(const {{ type.cxx_name }}& rhs)  const { return value_ >  rhs.value_; }
+    bool operator>=(const {{ type.cxx_name }}& rhs) const { return value_ >= rhs.value_; }
+
+    bool operator==(EnumerationItem rhs) const { return value_ == rhs; }
+    bool operator!=(EnumerationItem rhs) const { return value_ != rhs; }
+
+    {{ type.cxx_name }}() : value_(static_cast<EnumerationItem>(0)) {}
+    {{ type.cxx_name }}(const {{ type.cxx_name }}&) = default;
+    {{ type.cxx_name }}& operator=(const {{ type.cxx_name }}&) = default;
+    ~{{ type.cxx_name }}() override = default;
+
+private:
+    EnumerationItem value_;
+};
+
+} // namespace type
+} // namespace uci
+"""
+
+STRING_RESTRICTION_H_TEMPLATE = """\
+#pragma once
+// Generated by arcal schema compiler. DO NOT EDIT.
+
+#include "uci/base/Accessor.h"
+#include <string>
+{% if type.base_type == "std::vector<uint8_t>" %}\
+#include <vector>
+#include <cstdint>
+{% elif type.base_type in ("int8_t","uint8_t","int16_t","uint16_t","int32_t","uint32_t","int64_t","uint64_t") %}\
+#include <cstdint>
+{% endif %}\
+
+namespace uci {
+namespace type {
+
+class {{ type.cxx_name }} : public uci::base::Accessor {
+public:
+    AccessorType getAccessorType() const override { return ACCESSOR_TYPE_SIMPLE_PRIMITIVE; }
+    void reset() override { value_ = {{ type.base_type }}{}; }
+    const std::string& typeName() const override {
+        static const std::string kName{"{{ type.name }}"};
+        return kName;
+    }
+
+    const {{ type.base_type }}& getValue() const { return value_; }
+    void setValue(const {{ type.base_type }}& v) { value_ = v; }
+    {{ type.cxx_name }}& operator=(const {{ type.base_type }}& v) { value_ = v; return *this; }
+    operator {{ type.base_type }}() const { return value_; }
+
+    static std::string getUCITypeVersion() { return "{{ uci_version }}"; }
+
+    {{ type.cxx_name }}() = default;
+    {{ type.cxx_name }}(const {{ type.cxx_name }}&) = default;
+    {{ type.cxx_name }}& operator=(const {{ type.cxx_name }}&) = default;
+    ~{{ type.cxx_name }}() override = default;
+
+private:
+    {{ type.base_type }} value_;
+};
+
+} // namespace type
+} // namespace uci
+"""
+
+GLOBAL_ELEMENT_H_TEMPLATE = """\
+#pragma once
+// Generated by arcal schema compiler. DO NOT EDIT.
+
+// Listener, Reader, Writer, and factory methods are declared as nested classes
+// and static members of {{ elem.cxx_type }} in the type header.
+#include "uci/type/{{ elem.cxx_type }}.h"
+"""
+
+PRIMITIVE_TYPES = {
+    "boolean", "byte", "short", "int", "long", "float", "double",
+    "string", "anyURI", "dateTime", "dateTimeStamp", "unsignedByte",
+    "unsignedShort", "unsignedInt", "unsignedLong", "integer", "decimal",
+    "base64Binary", "hexBinary", "ID", "IDREF", "NMTOKEN", "time", "date", "duration",
+}
+
+CXX_PRIMITIVE_MAP = {
+    "boolean": "bool",
+    "byte": "int8_t", "short": "int16_t", "int": "int32_t", "long": "int64_t",
+    "unsignedByte": "uint8_t", "unsignedShort": "uint16_t",
+    "unsignedInt": "uint32_t", "unsignedLong": "uint64_t",
+    "integer": "int64_t", "decimal": "double",
+    "float": "float", "double": "double",
+    "string": "std::string", "anyURI": "std::string",
+    "dateTime": "std::string", "dateTimeStamp": "std::string",
+    "date": "std::string", "time": "std::string", "duration": "std::string",
+    "base64Binary": "std::vector<uint8_t>", "hexBinary": "std::vector<uint8_t>",
+    "ID": "std::string", "IDREF": "std::string", "NMTOKEN": "std::string",
+}
+
+
+def _sanitize_enum(value: str) -> str:
+    """Convert an XSD enumeration value to a valid C++ identifier."""
+    result = value.upper()
+    for ch, rep in [("-", "_"), (".", "_"), (" ", "_"), ("/", "_"), ("(", "_"), (")", "")]:
+        result = result.replace(ch, rep)
+    # C++ identifiers cannot start with a digit
+    if result and result[0].isdigit():
+        result = "E_" + result
+    return result or "EMPTY"
+
+
+def _qualify_filter(cxx_type: str, primitive_types: set, type_name: str) -> str:
+    """Prefix uci::type:: on non-primitive types that need namespace qualification."""
+    if type_name in primitive_types:
+        return cxx_type  # already a C++ built-in (e.g., bool, int32_t, std::string)
+    if "::" in cxx_type:
+        return cxx_type  # already qualified
+    return f"uci::type::{cxx_type}"
+
+
+def _make_env() -> "Environment":
+    from jinja2 import Environment
+    env = Environment(keep_trailing_newline=True)
+    env.filters["qualify"] = _qualify_filter
+    env.filters["sanitize_enum"] = _sanitize_enum
+    return env
+
+# Compiled once at import time; reused for every render call.
+_ENV = _make_env()
+_TMPL_ACCESSOR        = _ENV.from_string(ACCESSOR_H_TEMPLATE)
+_TMPL_ENUM            = _ENV.from_string(ENUM_H_TEMPLATE)
+_TMPL_STRING_RESTRICT = _ENV.from_string(STRING_RESTRICTION_H_TEMPLATE)
+_TMPL_GLOBAL_ELEMENT  = _ENV.from_string(GLOBAL_ELEMENT_H_TEMPLATE)
+
+
+def render_type(type_model: TypeModel, uci_version: str,
+                global_element: GlobalElementModel | None = None) -> str:
+    if type_model.is_enum:
+        tmpl = _TMPL_ENUM
+    elif type_model.is_string_restriction:
+        tmpl = _TMPL_STRING_RESTRICT
+    else:
+        tmpl = _TMPL_ACCESSOR
+    return tmpl.render(type=type_model, primitive_types=PRIMITIVE_TYPES,
+                       cxx_primitive_map=CXX_PRIMITIVE_MAP, uci_version=uci_version,
+                       global_element=global_element)
+
+
+def render_global_element(elem: GlobalElementModel) -> str:
+    return _TMPL_GLOBAL_ELEMENT.render(elem=elem)
+
+
+# ---------------------------------------------------------------------------
+# CDR handler code generation
+# ---------------------------------------------------------------------------
+
+CDR_ENCODE_MAP = {
+    "bool":     "arcal::externalizer::cdr::encode_bool",
+    "int8_t":   "arcal::externalizer::cdr::encode_int8",
+    "uint8_t":  "arcal::externalizer::cdr::encode_uint8",
+    "int16_t":  "arcal::externalizer::cdr::encode_int16",
+    "uint16_t": "arcal::externalizer::cdr::encode_uint16",
+    "int32_t":  "arcal::externalizer::cdr::encode_int32",
+    "uint32_t": "arcal::externalizer::cdr::encode_uint32",
+    "int64_t":  "arcal::externalizer::cdr::encode_int64",
+    "uint64_t": "arcal::externalizer::cdr::encode_uint64",
+    "float":    "arcal::externalizer::cdr::encode_float",
+    "double":   "arcal::externalizer::cdr::encode_double",
+    "std::string": "arcal::externalizer::cdr::encode_string",
+    "std::vector<uint8_t>": "arcal::externalizer::cdr::encode_bytes",
+}
+CDR_DECODE_MAP = {k: v.replace("encode_", "decode_") for k, v in CDR_ENCODE_MAP.items()}
+
+
+CDR_CPP_TEMPLATE = """\
+// Generated by arcal schema compiler. DO NOT EDIT.
+#include "uci/type/{{ type.cxx_name }}.h"
+#include "CdrPrimitives.h"
+#include "CdrRegistry.h"
+
+namespace arcal { namespace externalizer { namespace cdr { namespace gen {
+
+{% if type.is_enum %}\
+void {{ type.cxx_name }}_serialize(const uci::base::Accessor& base, std::vector<uint8_t>& buf) {
+    const auto& obj = static_cast<const uci::type::{{ type.cxx_name }}&>(base);
+    arcal::externalizer::cdr::encode_uint32(buf, static_cast<uint32_t>(obj.getValue()));
+}
+void {{ type.cxx_name }}_deserialize(const std::vector<uint8_t>& buf, uci::base::Accessor& base) {
+    auto& obj = static_cast<uci::type::{{ type.cxx_name }}&>(base);
+    std::size_t off = 0;
+    obj.setValue(static_cast<uci::type::{{ type.cxx_name }}::EnumerationItem>(
+        arcal::externalizer::cdr::decode_uint32(buf, off)));
+}
+void {{ type.cxx_name }}_deserialize_at(const std::vector<uint8_t>& buf, std::size_t& off, uci::base::Accessor& base) {
+    auto& obj = static_cast<uci::type::{{ type.cxx_name }}&>(base);
+    obj.setValue(static_cast<uci::type::{{ type.cxx_name }}::EnumerationItem>(
+        arcal::externalizer::cdr::decode_uint32(buf, off)));
+}
+{% elif type.is_string_restriction %}\
+void {{ type.cxx_name }}_serialize(const uci::base::Accessor& base, std::vector<uint8_t>& buf) {
+    const auto& obj = static_cast<const uci::type::{{ type.cxx_name }}&>(base);
+    {{ encode_map.get(type.base_type, 'arcal::externalizer::cdr::encode_string') }}(buf, obj.getValue());
+}
+void {{ type.cxx_name }}_deserialize(const std::vector<uint8_t>& buf, uci::base::Accessor& base) {
+    auto& obj = static_cast<uci::type::{{ type.cxx_name }}&>(base);
+    std::size_t off = 0;
+    obj.setValue({{ decode_map.get(type.base_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off));
+}
+void {{ type.cxx_name }}_deserialize_at(const std::vector<uint8_t>& buf, std::size_t& off, uci::base::Accessor& base) {
+    auto& obj = static_cast<uci::type::{{ type.cxx_name }}&>(base);
+    obj.setValue({{ decode_map.get(type.base_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off));
+}
+{% else %}\
+static void {{ type.cxx_name }}_serialize_impl(const uci::type::{{ type.cxx_name }}& obj, std::vector<uint8_t>& buf);
+static void {{ type.cxx_name }}_deserialize_impl(uci::type::{{ type.cxx_name }}& obj, const std::vector<uint8_t>& buf, std::size_t& off);
+
+void {{ type.cxx_name }}_serialize_impl(const uci::type::{{ type.cxx_name }}& obj, std::vector<uint8_t>& buf) {
+{% if type.base_type and type.base_type not in primitive_types %}\
+    arcal::externalizer::CdrRegistry::instance().lookup("{{ type.base_type }}").serialize(obj, buf);
+{% endif %}\
+{% for choice in type.choices %}\
+    arcal::externalizer::cdr::encode_uint32(buf, static_cast<uint32_t>(obj.get{{ type.cxx_name }}ChoiceOrdinal()));
+{% for v in choice.variants %}\
+    if (obj.is{{ v.cxx_name }}()) {
+{% if v.type_name in primitive_types %}\
+        {{ encode_map.get(v.cxx_type, 'arcal::externalizer::cdr::encode_string') }}(buf, obj.get{{ v.cxx_name }}());
+{% else %}\
+        arcal::externalizer::CdrRegistry::instance().lookup("{{ v.type_name }}").serialize(obj.get{{ v.cxx_name }}(), buf);
+{% endif %}\
+    }
+{% endfor %}\
+{% endfor %}\
+{% for field in type.fields %}\
+{% if field.list_kind %}\
+    arcal::externalizer::cdr::encode_sequence_length(buf, static_cast<uint32_t>(obj.get{{ field.cxx_name }}().size()));
+    for (const auto& item : obj.get{{ field.cxx_name }}()) {
+{% if field.type_name in primitive_types %}\
+        {{ encode_map.get(field.cxx_type, 'arcal::externalizer::cdr::encode_string') }}(buf, item);
+{% else %}\
+        arcal::externalizer::CdrRegistry::instance().lookup("{{ field.type_name }}").serialize(item, buf);
+{% endif %}\
+    }
+{% elif field.optional %}\
+    arcal::externalizer::cdr::encode_optional_flag(buf, obj.has{{ field.cxx_name }}());
+    if (obj.has{{ field.cxx_name }}()) {
+{% if field.type_name in primitive_types %}\
+        {{ encode_map.get(field.cxx_type, 'arcal::externalizer::cdr::encode_string') }}(buf, obj.get{{ field.cxx_name }}());
+{% else %}\
+        arcal::externalizer::CdrRegistry::instance().lookup("{{ field.type_name }}").serialize(obj.get{{ field.cxx_name }}(), buf);
+{% endif %}\
+    }
+{% else %}\
+{% if field.type_name in primitive_types %}\
+    {{ encode_map.get(field.cxx_type, 'arcal::externalizer::cdr::encode_string') }}(buf, obj.get{{ field.cxx_name }}());
+{% else %}\
+    arcal::externalizer::CdrRegistry::instance().lookup("{{ field.type_name }}").serialize(obj.get{{ field.cxx_name }}(), buf);
+{% endif %}\
+{% endif %}\
+{% endfor %}\
+}
+
+void {{ type.cxx_name }}_deserialize_impl(uci::type::{{ type.cxx_name }}& obj, const std::vector<uint8_t>& buf, std::size_t& off) {
+{% if type.base_type and type.base_type not in primitive_types %}\
+    arcal::externalizer::CdrRegistry::instance().lookup("{{ type.base_type }}").deserialize_at(buf, off, obj);
+{% endif %}\
+{% for choice in type.choices %}\
+    auto ord = static_cast<uci::type::{{ type.cxx_name }}::{{ type.cxx_name }}ChoiceOrdinalEnum>(
+        arcal::externalizer::cdr::decode_uint32(buf, off));
+    switch (ord) {
+{% for v in choice.variants %}\
+    case uci::type::{{ type.cxx_name }}::CHOICE_{{ v.cxx_name | upper }}: {
+{% if v.type_name in primitive_types %}\
+        obj.choose{{ v.cxx_name }}() = {{ decode_map.get(v.cxx_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off);
+{% else %}\
+        arcal::externalizer::CdrRegistry::instance().lookup("{{ v.type_name }}").deserialize_at(buf, off, obj.choose{{ v.cxx_name }}());
+{% endif %}\
+        break;
+    }
+{% endfor %}\
+    default: break;
+    }
+{% endfor %}\
+{% for field in type.fields %}\
+{% if field.list_kind %}\
+    { uint32_t cnt = arcal::externalizer::cdr::decode_sequence_length(buf, off);
+      obj.get{{ field.cxx_name }}().clear();
+      for (uint32_t i = 0; i < cnt; ++i) {
+{% if field.type_name in primitive_types %}\
+          obj.get{{ field.cxx_name }}().push_back({{ decode_map.get(field.cxx_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off));
+{% else %}\
+          {{ field.cxx_type | qualify(primitive_types, field.type_name) }} item;
+          arcal::externalizer::CdrRegistry::instance().lookup("{{ field.type_name }}").deserialize_at(buf, off, item);
+          obj.get{{ field.cxx_name }}().push_back(item);
+{% endif %}\
+      }
+    }
+{% elif field.optional %}\
+    if (arcal::externalizer::cdr::decode_optional_flag(buf, off)) {
+{% if field.type_name in primitive_types %}\
+        obj.enable{{ field.cxx_name }}() = {{ decode_map.get(field.cxx_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off);
+{% else %}\
+        arcal::externalizer::CdrRegistry::instance().lookup("{{ field.type_name }}").deserialize_at(buf, off, obj.enable{{ field.cxx_name }}());
+{% endif %}\
+    }
+{% else %}\
+{% if field.type_name in primitive_types %}\
+    obj.set{{ field.cxx_name }}({{ decode_map.get(field.cxx_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off));
+{% else %}\
+    arcal::externalizer::CdrRegistry::instance().lookup("{{ field.type_name }}").deserialize_at(buf, off, obj.get{{ field.cxx_name }}());
+{% endif %}\
+{% endif %}\
+{% endfor %}\
+}
+
+void {{ type.cxx_name }}_serialize(const uci::base::Accessor& base, std::vector<uint8_t>& buf) {
+    {{ type.cxx_name }}_serialize_impl(static_cast<const uci::type::{{ type.cxx_name }}&>(base), buf);
+}
+void {{ type.cxx_name }}_deserialize(const std::vector<uint8_t>& buf, uci::base::Accessor& base) {
+    std::size_t off = 0;
+    {{ type.cxx_name }}_deserialize_impl(static_cast<uci::type::{{ type.cxx_name }}&>(base), buf, off);
+}
+void {{ type.cxx_name }}_deserialize_at(const std::vector<uint8_t>& buf, std::size_t& off, uci::base::Accessor& base) {
+    {{ type.cxx_name }}_deserialize_impl(static_cast<uci::type::{{ type.cxx_name }}&>(base), buf, off);
+}
+{% endif %}\
+
+} } } } // namespace arcal::externalizer::cdr::gen
+"""
+
+
+CDR_REGISTER_ALL_TEMPLATE = """\
+// Generated by arcal schema compiler. DO NOT EDIT.
+#include "CdrRegistry.h"
+#include <vector>
+#include <cstdint>
+
+namespace uci { namespace base { class Accessor; } }
+
+namespace arcal { namespace externalizer { namespace cdr { namespace gen {
+
+{% for name in type_names %}\
+void {{ name }}_serialize(const uci::base::Accessor&, std::vector<uint8_t>&);
+void {{ name }}_deserialize(const std::vector<uint8_t>&, uci::base::Accessor&);
+void {{ name }}_deserialize_at(const std::vector<uint8_t>&, std::size_t&, uci::base::Accessor&);
+{% endfor %}\
+
+} } } } // namespace arcal::externalizer::cdr::gen
+
+namespace arcal { namespace externalizer { namespace cdr {
+
+void register_all_cdr_handlers() {
+    auto& reg = CdrRegistry::instance();
+{% for name, xsd_name in type_entries %}\
+    reg.registerHandler("{{ xsd_name }}", {gen::{{ name }}_serialize, gen::{{ name }}_deserialize, gen::{{ name }}_deserialize_at});
+{% endfor %}\
+}
+
+} } } // namespace arcal::externalizer::cdr
+"""
+
+
+FACTORY_ALL_CPP_TEMPLATE = """\
+// Generated by arcal schema compiler. DO NOT EDIT.
+// All typed Reader/Writer factory definitions — compiled as a single TU to
+// ensure DDS headers are included exactly once before all UCI type headers.
+#include "dds/DdsReader.h"
+#include "dds/DdsWriter.h"
+#include "dds/DdsAbstractServiceBusConnection.h"
+#include "uci/base/UCIException.h"
+{% for cxx_type in cxx_types %}\
+#include "uci/type/{{ cxx_type }}.h"
+{% endfor %}\
+
+namespace uci { namespace type {
+{% for cxx_type in cxx_types %}\
+
+{{ cxx_type }}::Reader&
+{{ cxx_type }}::createReader(const std::string& topic,
+                             uci::base::AbstractServiceBusConnection* asb) {
+    auto* dds = dynamic_cast<arcal::dds::DdsAbstractServiceBusConnection*>(asb);
+    if (!dds) throwUciException("createReader: ASB is not a DDS connection");
+    return *new arcal::dds::DdsReader<{{ cxx_type }}>(*dds, topic);
+}
+
+void {{ cxx_type }}::destroyReader(Reader& reader) {
+    reader.close();
+    delete &reader;
+}
+
+{{ cxx_type }}::Writer&
+{{ cxx_type }}::createWriter(const std::string& topic,
+                             uci::base::AbstractServiceBusConnection* asb) {
+    auto* dds = dynamic_cast<arcal::dds::DdsAbstractServiceBusConnection*>(asb);
+    if (!dds) throwUciException("createWriter: ASB is not a DDS connection");
+    return *new arcal::dds::DdsWriter<{{ cxx_type }}>(*dds, topic);
+}
+
+void {{ cxx_type }}::destroyWriter(Writer& writer) {
+    writer.close();
+    delete &writer;
+}
+{% endfor %}\
+} } // namespace uci::type
+"""
+
+_TMPL_CDR_CPP          = _ENV.from_string(CDR_CPP_TEMPLATE)
+_TMPL_CDR_REGISTER_ALL = _ENV.from_string(CDR_REGISTER_ALL_TEMPLATE)
+_TMPL_FACTORY_ALL_CPP  = _ENV.from_string(FACTORY_ALL_CPP_TEMPLATE)
+
+
+def render_cdr_handler(type_model: TypeModel) -> str:
+    return _TMPL_CDR_CPP.render(
+        type=type_model,
+        primitive_types=PRIMITIVE_TYPES,
+        encode_map=CDR_ENCODE_MAP,
+        decode_map=CDR_DECODE_MAP,
+    )
+
+
+def render_factory_all(elems: list) -> str:
+    seen: set = set()
+    cxx_types = []
+    for e in elems:
+        if e.type_name and e.cxx_type not in seen:
+            seen.add(e.cxx_type)
+            cxx_types.append(e.cxx_type)
+    return _TMPL_FACTORY_ALL_CPP.render(cxx_types=cxx_types)
+
+
+def render_cdr_register_all(type_models: list) -> str:
+    # type_entries: (cxx_name, xsd_name) pairs for all types
+    type_entries = [(m.cxx_name, m.name) for m in type_models]
+    type_names   = [m.cxx_name for m in type_models]
+    return _TMPL_CDR_REGISTER_ALL.render(
+        type_names=type_names,
+        type_entries=type_entries,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(description="arcal OMS Schema Compiler")
+    parser.add_argument("--schema", required=True, type=Path)
+    parser.add_argument("--out",    required=True, type=Path)
+    parser.add_argument("--ns-map", type=Path, default=None)
+    args = parser.parse_args()
+
+    ns_map = load_ns_map(args.ns_map) if args.ns_map else dict(PROTECTED_NS_MAP)
+
+    type_out_dir = args.out / "uci" / "type"
+    type_out_dir.mkdir(parents=True, exist_ok=True)
+
+    cdr_out_dir = args.out.parent / "src" / "generated"
+    cdr_out_dir.mkdir(parents=True, exist_ok=True)
+
+    schema = SchemaParser(args.schema)
+    schema.parse_all()
+
+    # Build type_name → GlobalElementModel mapping for nested class injection
+    global_element_for_type: dict[str, GlobalElementModel] = {
+        elem.type_name: elem for elem in schema.global_elements
+    }
+
+    uci_version = "2.5.0"
+    generated = 0
+    cdr_generated = 0
+
+    type_models = []
+    for name, type_model in schema.types.items():
+        ge = global_element_for_type.get(name)
+        out_path = type_out_dir / f"{xsd_name_to_cxx(name)}.h"
+        out_path.write_text(render_type(type_model, uci_version, global_element=ge))
+        generated += 1
+
+        cdr_path = cdr_out_dir / f"{xsd_name_to_cxx(name)}_cdr.cpp"
+        cdr_path.write_text(render_cdr_handler(type_model))
+        cdr_generated += 1
+
+        type_models.append(type_model)
+
+    (cdr_out_dir / "cdr_register_all.cpp").write_text(render_cdr_register_all(type_models))
+
+    for elem in schema.global_elements:
+        out_path = type_out_dir / f"{elem.cxx_name}.h"
+        out_path.write_text(render_global_element(elem))
+        generated += 1
+
+    (cdr_out_dir / "factories_all.cpp").write_text(render_factory_all(schema.global_elements))
+
+    print(f"arcal schema compiler: generated {generated} headers → {type_out_dir}")
+    print(f"arcal schema compiler: generated {cdr_generated} CDR handlers + register_all → {cdr_out_dir}")
+    print(f"arcal schema compiler: generated factories_all.cpp ({len(schema.global_elements)} types) → {cdr_out_dir}")
+
+
+if __name__ == "__main__":
+    main()

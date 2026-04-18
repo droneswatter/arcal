@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export CYCLONEDDS_URI="file://@CMAKE_CURRENT_SOURCE_DIR@/cyclonedds_localhost.xml"
+exec @CMAKE_CURRENT_BINARY_DIR@/e2e_topic_isolation

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# E2E smoke test: ActionCommand pub/sub on localhost.
+# CTest runs this via add_test(); run manually from the build directory as:
+#
+#   bash test/e2e/run_e2e_action_command.sh
+#
+set -euo pipefail
+
+DIR="@CMAKE_CURRENT_BINARY_DIR@"
+export LD_LIBRARY_PATH="@CMAKE_PREFIX_PATH@/lib:${LD_LIBRARY_PATH:-}"
+
+# Force both participants onto the loopback interface with unicast peer discovery.
+# This is required on WSL2 and any environment where multicast on lo is unreliable.
+# ParticipantIndex=auto in the config gives each participant a unique port, which is
+# what allows two participants to co-exist on the same host (analogous to SO_REUSEPORT).
+export CYCLONEDDS_URI="file://@CMAKE_CURRENT_SOURCE_DIR@/cyclonedds_localhost.xml"
+
+# Start subscriber in background; it will block waiting for a message.
+"$DIR/e2e_sub" &
+SUB_PID=$!
+
+# Allow the subscriber's DDS participant to start before the publisher.
+# Loopback unicast discovery completes in <10ms; 200ms is generous margin.
+sleep 0.2
+
+# Publish one message.
+"$DIR/e2e_pub"
+PUB_EXIT=$?
+
+# Wait for the subscriber to finish and capture its exit code.
+wait "$SUB_PID"
+SUB_EXIT=$?
+
+if [ "$PUB_EXIT" -ne 0 ]; then
+    echo "FAIL: publisher exited with code $PUB_EXIT" >&2
+    exit 1
+fi
+
+exit "$SUB_EXIT"
