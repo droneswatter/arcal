@@ -32,6 +32,7 @@ struct JsonAutoRegister {
 
 extern "C" {
 
+__attribute__((visibility("default")))
 uci::base::Externalizer* arcal_create_externalizer() {
     return new arcal::externalizer::json::JsonExternalizer();
 }
