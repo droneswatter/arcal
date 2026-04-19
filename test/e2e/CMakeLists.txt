@@ -42,6 +42,10 @@ add_executable(e2e_pub_rich pub_rich.cpp)
 target_link_libraries(e2e_pub_rich PRIVATE arcal arcal_externalizer_cdr)
 target_include_directories(e2e_pub_rich PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
+add_executable(e2e_pub_continuous pub_continuous.cpp)
+target_link_libraries(e2e_pub_continuous PRIVATE arcal arcal_externalizer_cdr)
+target_include_directories(e2e_pub_continuous PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 # ---------------------------------------------------------------------------
 # Single-process E2E tests — use CTest ENVIRONMENT for CYCLONEDDS_URI
 
