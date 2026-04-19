@@ -21,8 +21,11 @@ find_package(CycloneDDS-CXX REQUIRED)
 # ---------------------------------------------------------------------------
 
 set(IDL_FILE    ${CMAKE_SOURCE_DIR}/src/dds/arcal_payload.idl)
+set(IDL_INPUT   arcal_payload.idl)
 set(IDL_OUT_C   ${CMAKE_SOURCE_DIR}/src/dds/arcal_payload.c)
 set(IDL_OUT_CXX ${CMAKE_SOURCE_DIR}/src/dds/arcal_payload.cpp)
+set(IDL_OUT_H   ${CMAKE_SOURCE_DIR}/src/dds/arcal_payload.h)
+set(IDL_OUT_HPP ${CMAKE_SOURCE_DIR}/src/dds/arcal_payload.hpp)
 
 # idlc ships with CycloneDDS; locate it via the imported target or find_program.
 # get_target_property() is a hard error on a non-existent target, so guard first.
@@ -39,13 +42,17 @@ endif()
 
 add_custom_command(
     OUTPUT  ${IDL_OUT_C} ${IDL_OUT_CXX}
-            ${CMAKE_SOURCE_DIR}/src/dds/arcal_payload.h
-            ${CMAKE_SOURCE_DIR}/src/dds/arcal_payload.hpp
-    COMMAND ${_CYCLONE_LOC}        ${IDL_FILE}
-    COMMAND ${_CYCLONE_LOC} -l cxx ${IDL_FILE}
+            ${IDL_OUT_H}
+            ${IDL_OUT_HPP}
+    COMMAND ${_CYCLONE_LOC}        ${IDL_INPUT}
+    COMMAND ${_CYCLONE_LOC} -l cxx ${IDL_INPUT}
+    COMMAND ${CMAKE_COMMAND}
+            "-DIDLC_SCRUB_FILES=${IDL_OUT_C};${IDL_OUT_CXX};${IDL_OUT_H};${IDL_OUT_HPP}"
+            -P ${CMAKE_SOURCE_DIR}/cmake/ScrubIdlcSourcePaths.cmake
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/dds
     DEPENDS ${IDL_FILE}
     COMMENT "Compiling arcal_payload.idl..."
+    VERBATIM
 )
 
 add_custom_target(arcal_idl DEPENDS ${IDL_OUT_C} ${IDL_OUT_CXX})
