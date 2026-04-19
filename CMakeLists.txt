@@ -89,6 +89,7 @@ add_library(arcal SHARED
     src/dds/arcal_payload.c
     src/dds/arcal_payload.cpp
     src/generated/factories_all.cpp
+    src/generated/accessor_factory_all.cpp
     src/ExternalizerLoader.cpp
 )
 
