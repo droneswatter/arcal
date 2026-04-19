@@ -9,8 +9,8 @@ Items are roughly priority-ordered within each section. "Done" items are kept fo
 | Status | Item | Notes |
 |--------|------|-------|
 | Done   | CDR externalizer (read + write) | `libarcal_externalizer_cdr.so` |
-| Done   | JSON externalizer — write | `libarcal_externalizer_json.so`; schema-compiler-generated handlers; no external deps |
-| Next   | JSON externalizer — read | Needs a JSON parser (nlohmann/json or simdjson); schema compiler generates deserializers |
+| Next   | JSON externalizer — write | `libarcal_externalizer_json.so`; schema-compiler-generated handlers; no external deps |
+| Later  | JSON externalizer — read | Needs a JSON parser (nlohmann/json or simdjson); schema compiler generates deserializers |
 | Later  | XML externalizer (read + write) | Needs an XML lib (pugixml recommended — header-only, fast); matches OMS wire format for external tools |
 
 ---
@@ -69,6 +69,18 @@ An in-process `AbstractServiceBusConnection` that routes messages via `std::dequ
 - vcpkg port (`ports/arcal/`) so downstream projects can depend on arcal via vcpkg
 - `pkg-config` file (`arcal.pc`) for non-CMake consumers
 - Consider a static-library build option (`BUILD_SHARED_LIBS=OFF`) for embedded targets
+
+---
+
+## Schema Reduction (arcal-subset)
+
+The full UCI schema produces 5,614 CDR handlers and a matching set of JSON handlers — most programs use a small fraction of these types. A schema-reduction option lets integrators ship a purpose-built CAL library that is smaller, faster to compile, and uses less runtime memory.
+
+- Pass the schema compiler a message list (`--messages ActionCommandMT,ActionStatusMT,...`) and a library suffix (`--subset-name mission-planner`)
+- Compiler walks the type dependency graph for each listed message type and emits only the required handlers
+- Output: `libarcal_cdr_mission-planner.so` / `libarcal_json_mission-planner.so` built from the reduced handler set
+- The ExternalizerLoader soname map in arcal core stays unchanged; the subset library is a drop-in replacement
+- Useful for embedded/constrained targets and for shortening CI build times during development
 
 ---
 
