@@ -119,6 +119,7 @@ endif()
 # ---------------------------------------------------------------------------
 
 add_subdirectory(externalizer/cdr)
+add_subdirectory(externalizer/json)
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -143,7 +144,7 @@ endif()
 # Install
 # ---------------------------------------------------------------------------
 
-install(TARGETS arcal arcal_externalizer_cdr
+install(TARGETS arcal arcal_externalizer_cdr arcal_externalizer_json
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )
