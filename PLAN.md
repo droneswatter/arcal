@@ -9,7 +9,7 @@ Items are roughly priority-ordered within each section. "Done" items are kept fo
 | Status | Item | Notes |
 |--------|------|-------|
 | Done   | CDR externalizer (read + write) | `libarcal_externalizer_cdr.so` |
-| Next   | JSON externalizer — write | `libarcal_externalizer_json.so`; schema-compiler-generated handlers; no external deps |
+| Done   | JSON externalizer — write | `libarcal_externalizer_json.so`; schema-compiler-generated handlers; no external deps |
 | Later  | JSON externalizer — read | Needs a JSON parser (nlohmann/json or simdjson); schema compiler generates deserializers |
 | Later  | XML externalizer (read + write) | Needs an XML lib (pugixml recommended — header-only, fast); matches OMS wire format for external tools |
 
