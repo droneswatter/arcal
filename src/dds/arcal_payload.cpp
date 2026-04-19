@@ -37,7 +37,8 @@ propvec &get_type_props<::arcal_dds::OpaquePayload>() {
   props.clear();
 
   props.push_back(entity_properties_t(0, 0, false, bb_unset, extensibility::ext_final));  //root
-  props.push_back(entity_properties_t(1, 0, false, bb_unset, extensibility::ext_final, false));  //::data
+  props.push_back(entity_properties_t(1, 0, false, get_bit_bound<uint32_t>(), extensibility::ext_final, false));  //::type_tag
+  props.push_back(entity_properties_t(1, 1, false, bb_unset, extensibility::ext_final, false));  //::data
 
   entity_properties_t::finish(props, keylist);
   props_end = props.data() + props.size();

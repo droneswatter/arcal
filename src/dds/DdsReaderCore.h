@@ -19,8 +19,11 @@ class DdsAbstractServiceBusConnection; // forward declare — full type in .cpp 
 
 class DdsReaderCore {
 public:
-    using SampleBytes     = std::vector<uint8_t>;
-    using SamplesCallback = std::function<void(std::vector<SampleBytes>)>;
+    struct TaggedSample {
+        uint32_t             tag;
+        std::vector<uint8_t> data;
+    };
+    using SamplesCallback = std::function<void(std::vector<TaggedSample>)>;
 
     DdsReaderCore(DdsAbstractServiceBusConnection& asb,
                   const std::string& topicName,
@@ -31,11 +34,11 @@ public:
     DdsReaderCore& operator=(const DdsReaderCore&) = delete;
 
     // Block up to timeoutMs ms; return up to maxSamples raw payloads (0 = no cap).
-    std::vector<SampleBytes> waitAndTake(unsigned long timeoutMs,
-                                         unsigned long maxSamples);
+    std::vector<TaggedSample> waitAndTake(unsigned long timeoutMs,
+                                          unsigned long maxSamples);
 
     // Non-blocking take; return up to maxSamples raw payloads (0 = no cap).
-    std::vector<SampleBytes> takeNow(unsigned long maxSamples);
+    std::vector<TaggedSample> takeNow(unsigned long maxSamples);
 
     // Register callback for async background delivery when persistent listeners
     // are registered.  Pass nullptr to put the background thread to sleep.

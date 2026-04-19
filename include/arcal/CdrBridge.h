@@ -25,8 +25,9 @@ using CdrDeserializeByTagFn = void(*)(uint32_t tag, const std::vector<uint8_t>&,
                                       std::size_t offset, uci::base::Accessor&);
 
 void registerCdrBridge(CdrSerializeFn s, CdrDeserializeByTagFn d);
-void cdrSerialize  (const uci::base::Accessor& obj, std::vector<uint8_t>& out);
-void cdrDeserialize(const std::vector<uint8_t>& in,  uci::base::Accessor& obj);
+void     cdrSerialize  (const uci::base::Accessor& obj, std::vector<uint8_t>& out);
+uint32_t cdrTypeTag    (const uci::base::Accessor& obj);
+void     cdrDeserialize(uint32_t tag, const std::vector<uint8_t>& in, uci::base::Accessor& obj);
 
 // Called by arcal_externalizer_cdr at load time so the ExternalizerLoader in
 // arcal core can instantiate CdrExternalizer without a circular link dependency.

@@ -25,7 +25,7 @@ public:
     DdsWriterCore(const DdsWriterCore&)            = delete;
     DdsWriterCore& operator=(const DdsWriterCore&) = delete;
 
-    void write(const std::vector<uint8_t>& bytes);
+    void write(uint32_t tag, const std::vector<uint8_t>& bytes);
     void close();
 
 private:

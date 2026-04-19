@@ -28,7 +28,7 @@ public:
         if (closed_) throwUciException("DdsWriter: write on closed writer");
         std::vector<uint8_t> bytes;
         arcal::cdrSerialize(accessor, bytes);
-        core_.write(bytes);
+        core_.write(arcal::cdrTypeTag(accessor), bytes);
     }
 
     void close() override {

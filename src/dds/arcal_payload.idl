@@ -1,6 +1,7 @@
 module arcal_dds {
   @final
   struct OpaquePayload {
+    uint32 type_tag;
     sequence<octet> data;
   };
 };

@@ -34,19 +34,19 @@ struct DdsReaderCore::Impl {
         if (bgThread.joinable()) bgThread.join();
     }
 
-    std::vector<SampleBytes> take(unsigned long maxSamples) {
-        std::vector<SampleBytes> out;
+    std::vector<TaggedSample> take(unsigned long maxSamples) {
+        std::vector<TaggedSample> out;
         auto samples = reader.take();
         for (auto& s : samples) {
             if (!s.info().valid()) continue;
             if (maxSamples > 0 && out.size() >= maxSamples) break;
-            out.push_back(s.data().data());
+            out.push_back({s.data().type_tag(), s.data().data()});
         }
         return out;
     }
 
-    std::vector<SampleBytes> waitAndTake(unsigned long timeoutMs,
-                                          unsigned long maxSamples) {
+    std::vector<TaggedSample> waitAndTake(unsigned long timeoutMs,
+                                           unsigned long maxSamples) {
         ::dds::core::cond::WaitSet ws;
         auto rc = ::dds::sub::cond::ReadCondition(
             reader, ::dds::sub::status::DataState::any());
@@ -96,12 +96,12 @@ DdsReaderCore::DdsReaderCore(DdsAbstractServiceBusConnection& asb,
 
 DdsReaderCore::~DdsReaderCore() = default;
 
-std::vector<DdsReaderCore::SampleBytes>
+std::vector<DdsReaderCore::TaggedSample>
 DdsReaderCore::waitAndTake(unsigned long timeoutMs, unsigned long maxSamples) {
     return impl_->waitAndTake(timeoutMs, maxSamples);
 }
 
-std::vector<DdsReaderCore::SampleBytes>
+std::vector<DdsReaderCore::TaggedSample>
 DdsReaderCore::takeNow(unsigned long maxSamples) {
     return impl_->take(maxSamples);
 }

@@ -29,9 +29,10 @@ DdsWriterCore::DdsWriterCore(DdsAbstractServiceBusConnection& asb,
 
 DdsWriterCore::~DdsWriterCore() = default;
 
-void DdsWriterCore::write(const std::vector<uint8_t>& bytes) {
+void DdsWriterCore::write(uint32_t tag, const std::vector<uint8_t>& bytes) {
     if (impl_->closed) return;
     arcal_dds::OpaquePayload payload;
+    payload.type_tag(tag);
     payload.data(bytes);
     impl_->writer.write(payload);
 }

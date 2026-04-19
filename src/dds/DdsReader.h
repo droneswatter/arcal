@@ -54,7 +54,7 @@ public:
                        ListenerType& listener) override {
         if (closed_) throwUciException("DdsReader: read on closed reader");
         auto raw = core_.waitAndTake(timeoutMs, numberOfMessages);
-        for (auto& bytes : raw) dispatchOne(bytes, &listener);
+        for (auto& s : raw) dispatchOne(s, &listener);
         return static_cast<unsigned long>(raw.size());
     }
 
@@ -62,7 +62,7 @@ public:
                              ListenerType& listener) override {
         if (closed_) throwUciException("DdsReader: readNoWait on closed reader");
         auto raw = core_.takeNow(numberOfMessages);
-        for (auto& bytes : raw) dispatchOne(bytes, &listener);
+        for (auto& s : raw) dispatchOne(s, &listener);
         return static_cast<unsigned long>(raw.size());
     }
 
@@ -73,18 +73,20 @@ public:
     }
 
 private:
-    void dispatchOne(const DdsReaderCore::SampleBytes& bytes,
+    void dispatchOne(const DdsReaderCore::TaggedSample& s,
                      ListenerType* callListener) {
         MsgType msg;
-        arcal::cdrDeserialize(bytes, msg);
+        const uint32_t expected = arcal::cdrTypeTag(msg);
+        if (s.tag != expected) return; // wrong type on this topic; silently drop
+        arcal::cdrDeserialize(s.tag, s.data, msg);
         if (callListener) callListener->handleMessage(msg);
         std::vector<ListenerType*> snap;
         { std::lock_guard<std::mutex> lk(mu_); snap = listeners_; }
         for (auto* l : snap) l->handleMessage(msg);
     }
 
-    void onBackgroundSamples(std::vector<DdsReaderCore::SampleBytes> samples) {
-        for (auto& bytes : samples) dispatchOne(bytes, nullptr);
+    void onBackgroundSamples(std::vector<DdsReaderCore::TaggedSample> samples) {
+        for (auto& s : samples) dispatchOne(s, nullptr);
     }
 
     // core_ is declared first so it is destroyed last, ensuring the background
