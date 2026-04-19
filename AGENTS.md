@@ -70,10 +70,10 @@ ctest --test-dir build --output-on-failure
 # E2E tests only
 ctest --test-dir build -R E2E --output-on-failure
 
-# On WSL2, single-process E2E tests need localhost DDS config — CTest sets this automatically via ENVIRONMENT property
+# Registered CERT and E2E tests use the bundled localhost Cyclone DDS config via CYCLONEDDS_URI
 ```
 
-E2E tests live in `test/e2e/`. They are standalone executables returning 0 on pass. The two multi-process tests (ActionCommand pub/sub, TopicIsolation) use shell script wrappers and a `cyclonedds_localhost.xml` config.
+E2E tests live in `test/e2e/`. They are standalone executables returning 0 on pass. CTest sets `CYCLONEDDS_URI=file://.../test/e2e/cyclonedds_localhost.xml` so DDS binds to loopback. Export the same variable manually when running test binaries outside CTest.
 
 ## Schema compiler
 

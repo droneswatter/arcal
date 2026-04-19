@@ -1,7 +1,13 @@
+set(_ARCAL_DDS_TEST_ENV
+    "CYCLONEDDS_URI=file://${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml")
+
 function(add_cert_test cert_id)
     add_executable(cert_${cert_id} ${cert_id}.cpp)
     target_link_libraries(cert_${cert_id} PRIVATE arcal)
     add_test(NAME CERT-${cert_id} COMMAND cert_${cert_id})
+    set_tests_properties(CERT-${cert_id} PROPERTIES
+        TIMEOUT     8
+        ENVIRONMENT "${_ARCAL_DDS_TEST_ENV}")
 endfunction()
 
 # For tests that create DDS topics/readers/writers and need the CDR externalizer.
@@ -11,7 +17,7 @@ function(add_cert_test_ext cert_id)
     add_test(NAME CERT-${cert_id} COMMAND cert_${cert_id})
     set_tests_properties(CERT-${cert_id} PROPERTIES
         TIMEOUT     8
-        ENVIRONMENT "CYCLONEDDS_URI=file://${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml")
+        ENVIRONMENT "${_ARCAL_DDS_TEST_ENV}")
 endfunction()
 
 # CERT CAL-016015: Multiple CAL Clients in single address space get distinct UUIDs

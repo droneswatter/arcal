@@ -1,3 +1,6 @@
+set(_ARCAL_DDS_TEST_ENV
+    "CYCLONEDDS_URI=file://${CMAKE_CURRENT_SOURCE_DIR}/cyclonedds_localhost.xml")
+
 add_executable(e2e_pub pub_action_command.cpp)
 target_link_libraries(e2e_pub PRIVATE arcal arcal_externalizer_cdr)
 target_include_directories(e2e_pub PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -17,7 +20,9 @@ add_test(
     NAME    E2E-ActionCommand-PubSub
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/run_e2e_action_command.sh
 )
-set_tests_properties(E2E-ActionCommand-PubSub PROPERTIES TIMEOUT 8)
+set_tests_properties(E2E-ActionCommand-PubSub PROPERTIES
+    TIMEOUT     8
+    ENVIRONMENT "${_ARCAL_DDS_TEST_ENV}")
 
 # ---------------------------------------------------------------------------
 
@@ -36,7 +41,9 @@ add_test(
     NAME    E2E-TopicIsolation
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/run_e2e_topic_isolation.sh
 )
-set_tests_properties(E2E-TopicIsolation PROPERTIES TIMEOUT 8)
+set_tests_properties(E2E-TopicIsolation PROPERTIES
+    TIMEOUT     8
+    ENVIRONMENT "${_ARCAL_DDS_TEST_ENV}")
 
 add_executable(e2e_pub_rich pub_rich.cpp)
 target_link_libraries(e2e_pub_rich PRIVATE arcal arcal_externalizer_cdr)
@@ -47,10 +54,7 @@ target_link_libraries(e2e_pub_continuous PRIVATE arcal arcal_externalizer_cdr)
 target_include_directories(e2e_pub_continuous PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 # ---------------------------------------------------------------------------
-# Single-process E2E tests — use CTest ENVIRONMENT for CYCLONEDDS_URI
-
-set(_E2E_ENV
-    "CYCLONEDDS_URI=file://${CMAKE_CURRENT_SOURCE_DIR}/cyclonedds_localhost.xml")
+# Single-process E2E tests.
 
 foreach(_test IN ITEMS
     content_fidelity
@@ -69,5 +73,5 @@ foreach(_test IN ITEMS
     add_test(NAME E2E-${_test_name} COMMAND e2e_${_test})
     set_tests_properties(E2E-${_test_name} PROPERTIES
         TIMEOUT     8
-        ENVIRONMENT "${_E2E_ENV}")
+        ENVIRONMENT "${_ARCAL_DDS_TEST_ENV}")
 endforeach()

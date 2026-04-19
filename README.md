@@ -227,17 +227,13 @@ Or link directly against `arcal_externalizer_cdr` and the loader is available au
 
 ### DDS network configuration
 
-Set `ARCAL_CONFIG` to a network configuration file before starting:
-```bash
-export ARCAL_CONFIG=/path/to/config.xml
-./my_service
-```
-
-For single-host testing on Linux, set `CYCLONEDDS_URI` to the bundled loopback config:
+Cyclone DDS reads its runtime configuration from `CYCLONEDDS_URI`. For single-host testing on Linux, set it to the bundled loopback config:
 ```bash
 export CYCLONEDDS_URI="file://$(pwd)/test/e2e/cyclonedds_localhost.xml"
 ```
-This pins both participants to the loopback interface with unicast discovery. On WSL2, standard multicast discovery is unreliable and this config is required.
+This pins participants to the loopback interface with unicast discovery. On WSL2, standard multicast discovery is unreliable and this config is required.
+
+CTest sets `CYCLONEDDS_URI` automatically for the registered CERT and E2E tests. Export it yourself when running test binaries or examples directly.
 
 ## Testing
 
