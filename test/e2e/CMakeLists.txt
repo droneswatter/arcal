@@ -38,6 +38,10 @@ add_test(
 )
 set_tests_properties(E2E-TopicIsolation PROPERTIES TIMEOUT 8)
 
+add_executable(e2e_pub_rich pub_rich.cpp)
+target_link_libraries(e2e_pub_rich PRIVATE arcal arcal_externalizer_cdr)
+target_include_directories(e2e_pub_rich PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 # ---------------------------------------------------------------------------
 # Single-process E2E tests — use CTest ENVIRONMENT for CYCLONEDDS_URI
 
