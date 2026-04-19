@@ -1,6 +1,7 @@
 #pragma once
 
-// Runtime registry mapping accessor type names to CDR serialize/deserialize functions.
+// Runtime registry mapping accessor type names (and 32-bit FNV-1a tags) to
+// CDR serialize/deserialize functions.
 // Generated CDR handler files call CdrRegistry::registerHandler() at static init time.
 
 #include "uci/base/Accessor.h"
@@ -31,7 +32,11 @@ public:
     }
 
     void registerHandler(const std::string& typeName, CdrHandlers handlers) {
-        table_[typeName] = std::move(handlers);
+        table_[typeName] = handlers;
+    }
+
+    void registerByTag(uint32_t tag, const std::string& typeName) {
+        tagTable_[tag] = typeName;
     }
 
     const CdrHandlers& lookup(const std::string& typeName) const {
@@ -41,19 +46,26 @@ public:
         return it->second;
     }
 
+    const CdrHandlers& lookupByTag(uint32_t tag) const {
+        auto it = tagTable_.find(tag);
+        if (it == tagTable_.end())
+            throw std::runtime_error("CdrRegistry: no handler for type tag " + std::to_string(tag));
+        return lookup(it->second);
+    }
+
+    // Returns empty string if tag is unknown.
+    std::string typeNameForTag(uint32_t tag) const {
+        auto it = tagTable_.find(tag);
+        return it != tagTable_.end() ? it->second : std::string{};
+    }
+
     bool has(const std::string& typeName) const {
         return table_.count(typeName) > 0;
     }
 
 private:
-    std::unordered_map<std::string, CdrHandlers> table_;
-};
-
-// Utility: auto-register a handler at static init time
-struct CdrHandlerRegistrar {
-    CdrHandlerRegistrar(const std::string& typeName, CdrHandlers handlers) {
-        CdrRegistry::instance().registerHandler(typeName, std::move(handlers));
-    }
+    std::unordered_map<std::string,  CdrHandlers> table_;
+    std::unordered_map<uint32_t,     std::string>  tagTable_;
 };
 
 } // namespace externalizer
