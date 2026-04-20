@@ -20,3 +20,6 @@ CMakeUserPresets.json
 # Cache / tooling
 .cache/
 .ccache/
+
+# CTest output (written to source root when using --test-dir)
+Testing/
