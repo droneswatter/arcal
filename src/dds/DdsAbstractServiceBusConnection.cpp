@@ -74,21 +74,20 @@ auto DdsAbstractServiceBusConnection::getStatus() const -> StatusData {
     return status_;
 }
 
-void DdsAbstractServiceBusConnection::addStatusListener(StatusListener* listener) {
-    if (!listener) return;
+void DdsAbstractServiceBusConnection::addStatusListener(StatusListener& listener) {
     StatusData current;
     {
         std::lock_guard<std::mutex> lock(statusMutex_);
-        listeners_.push_back(listener);
+        listeners_.push_back(&listener);
         current = status_;
     }
     // CERT CAL-016366: call immediately with current state
-    listener->statusChanged(current);
+    listener.statusChanged(current);
 }
 
-void DdsAbstractServiceBusConnection::removeStatusListener(StatusListener* listener) {
+void DdsAbstractServiceBusConnection::removeStatusListener(StatusListener& listener) {
     std::lock_guard<std::mutex> lock(statusMutex_);
-    listeners_.erase(std::remove(listeners_.begin(), listeners_.end(), listener), listeners_.end());
+    listeners_.erase(std::remove(listeners_.begin(), listeners_.end(), &listener), listeners_.end());
 }
 
 ::dds::domain::DomainParticipant& DdsAbstractServiceBusConnection::participant() {
@@ -104,8 +103,8 @@ void DdsAbstractServiceBusConnection::transitionState(StateEnum newState, const 
     {
         std::lock_guard<std::mutex> lock(statusMutex_);
         if (status_.state == newState) return;
-        status_.state  = newState;
-        status_.detail = detail;
+        status_.state       = newState;
+        status_.stateDetail = detail;
         snapshot = listeners_;
     }
     for (auto* l : snapshot) l->statusChanged({newState, detail});
@@ -132,15 +131,16 @@ void DdsAbstractServiceBusConnection::monitorLoop() {
 } // namespace dds
 } // namespace arcal
 
-// Free function entry point
-extern "C" {
-
-uci::base::AbstractServiceBusConnection* uci_getAbstractServiceBusConnection(const char* serviceLabel) {
-    return new arcal::dds::DdsAbstractServiceBusConnection(serviceLabel ? serviceLabel : "default");
+// Free function entry points (OMSC-SPC-008 §10.4)
+extern "C"
+uci::base::AbstractServiceBusConnection* uci_getAbstractServiceBusConnection(
+    const std::string& serviceIdentifier,
+    const std::string& /*typeOfAbstractServiceBusConnection*/)
+{
+    return new arcal::dds::DdsAbstractServiceBusConnection(serviceIdentifier);
 }
 
+extern "C"
 void uci_destroyAbstractServiceBusConnection(uci::base::AbstractServiceBusConnection* asb) {
-    delete asb;
+    delete static_cast<arcal::dds::DdsAbstractServiceBusConnection*>(asb);
 }
-
-} // extern "C"

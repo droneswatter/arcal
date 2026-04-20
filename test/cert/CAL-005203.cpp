@@ -8,7 +8,7 @@
 #include <iostream>
 
 int main() {
-    auto* asb = uci_getAbstractServiceBusConnection("UUIDService");
+    auto* asb = uci_getAbstractServiceBusConnection("UUIDService", "DDS");
     assert(asb);
 
     auto sys  = asb->getMySystemUUID();

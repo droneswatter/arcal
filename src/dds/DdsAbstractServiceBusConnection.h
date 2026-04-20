@@ -35,8 +35,8 @@ public:
     std::string getAbstractServiceBusConnectionVersion() const override;
 
     StatusData getStatus() const override;
-    void addStatusListener(StatusListener* listener) override;
-    void removeStatusListener(StatusListener* listener) override;
+    void addStatusListener(StatusListener& listener) override;
+    void removeStatusListener(StatusListener& listener) override;
 
     // Expose DDS participant for Reader/Writer construction.
     ::dds::domain::DomainParticipant& participant();

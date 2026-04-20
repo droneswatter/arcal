@@ -16,7 +16,7 @@ struct ActionCommandListener : public uci::type::ActionCommandMT::Listener {
 };
 
 int main() {
-    auto* asb = uci_getAbstractServiceBusConnection("e2e_sub");
+    auto* asb = uci_getAbstractServiceBusConnection("e2e_sub", "DDS");
     if (!asb) { std::cerr << "sub: failed to get ASB\n"; return 1; }
 
 

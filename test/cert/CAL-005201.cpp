@@ -6,7 +6,7 @@
 #include <iostream>
 
 int main() {
-    auto* asb = uci_getAbstractServiceBusConnection("InitTest");
+    auto* asb = uci_getAbstractServiceBusConnection("InitTest", "DDS");
     assert(asb != nullptr && "uci_getAbstractServiceBusConnection must return non-null");
 
     // Instance must be in NORMAL state after initialization

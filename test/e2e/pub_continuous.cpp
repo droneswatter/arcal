@@ -219,7 +219,7 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, sighandler);
     std::signal(SIGTERM, sighandler);
 
-    auto* asb = uci_getAbstractServiceBusConnection("pub_continuous");
+    auto* asb = uci_getAbstractServiceBusConnection("pub_continuous", "DDS");
     if (!asb) {
         std::cerr << "pub_continuous: failed to get ASB\n";
         return 1;

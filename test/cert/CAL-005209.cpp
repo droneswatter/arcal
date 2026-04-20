@@ -10,7 +10,7 @@
 #include <iostream>
 
 int main() {
-    auto* asb = uci_getAbstractServiceBusConnection("Svc209");
+    auto* asb = uci_getAbstractServiceBusConnection("Svc209", "DDS");
     assert(asb);
 
 

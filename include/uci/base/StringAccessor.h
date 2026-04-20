@@ -8,7 +8,7 @@ namespace base {
 
 class StringAccessor : public Accessor {
 public:
-    AccessorType getAccessorType() const override { return ACCESSOR_TYPE_STRING; }
+    AccessorType getAccessorType() const noexcept override { return ACCESSOR_TYPE_STRING; }
     void reset() override { value_.clear(); }
 
     const std::string& str() const { return value_; }
@@ -23,12 +23,13 @@ public:
 
     operator std::string() const { return value_; }
 
+private:
+    std::string value_;
+
+protected:
     StringAccessor() = default;
     StringAccessor(const StringAccessor&) = default;
     ~StringAccessor() override = default;
-
-private:
-    std::string value_;
 };
 
 } // namespace base

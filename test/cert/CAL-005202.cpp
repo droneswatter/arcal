@@ -10,14 +10,14 @@
 #include <iostream>
 
 int main() {
-    auto* a = uci_getAbstractServiceBusConnection("SvcSame");
-    auto* b = uci_getAbstractServiceBusConnection("SvcSame");
+    auto* a = uci_getAbstractServiceBusConnection("SvcSame", "DDS");
+    auto* b = uci_getAbstractServiceBusConnection("SvcSame", "DDS");
     assert(a && b);
 
     assert(a->getMyServiceUUID() == b->getMyServiceUUID()
            && "identical service labels must map to the same Service UUID");
 
-    auto* c = uci_getAbstractServiceBusConnection("SvcOther");
+    auto* c = uci_getAbstractServiceBusConnection("SvcOther", "DDS");
     assert(c);
     assert(a->getMyServiceUUID() != c->getMyServiceUUID()
            && "different service labels must map to different Service UUIDs");

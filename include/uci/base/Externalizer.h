@@ -31,9 +31,11 @@ public:
     virtual std::string getVendorVersion() const = 0;
     virtual std::string getVendor() const = 0;
 
+protected:
+    friend class ExternalizerLoader;
+
     virtual ~Externalizer() = default;
 
-protected:
     Externalizer() = default;
     Externalizer(const Externalizer&) = default;
     Externalizer& operator=(const Externalizer&) = default;

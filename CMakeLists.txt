@@ -141,6 +141,7 @@ if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
 endif()
 
 if(ARCAL_BUILD_TESTS)
+    add_subdirectory(test/conform)
     add_subdirectory(test/cert)
     add_subdirectory(test/json)
     add_subdirectory(test/cdr)

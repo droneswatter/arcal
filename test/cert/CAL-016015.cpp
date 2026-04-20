@@ -8,8 +8,8 @@
 #include <iostream>
 
 int main() {
-    auto* asb1 = uci_getAbstractServiceBusConnection("ServiceA");
-    auto* asb2 = uci_getAbstractServiceBusConnection("ServiceB");
+    auto* asb1 = uci_getAbstractServiceBusConnection("ServiceA", "DDS");
+    auto* asb2 = uci_getAbstractServiceBusConnection("ServiceB", "DDS");
 
     assert(asb1 != nullptr);
     assert(asb2 != nullptr);

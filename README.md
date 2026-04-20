@@ -155,7 +155,7 @@ This removes `include/uci/type/` and `src/generated/`. Re-run the schema compile
 #include "uci/base/AbstractServiceBusConnection.h"
 
 uci::base::AbstractServiceBusConnection* conn =
-    uci_getAbstractServiceBusConnection("MyServiceLabel");
+    uci_getAbstractServiceBusConnection("MyServiceLabel", "DDS");
 // conn->getStatus() == NORMAL when DDS participant is live
 ```
 

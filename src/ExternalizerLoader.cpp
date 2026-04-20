@@ -53,7 +53,7 @@ public:
     }
 
     void destroyExternalizer(uci::base::Externalizer* ext) override {
-        delete ext;
+        destroyExternalizerPointer(ext);
     }
 };
 

@@ -20,7 +20,7 @@ struct Listener : public uci::type::ActionCommandMT::Listener {
 };
 
 int main() {
-    auto* asb = uci_getAbstractServiceBusConnection("e2e_fidelity");
+    auto* asb = uci_getAbstractServiceBusConnection("e2e_fidelity", "DDS");
     if (!asb) { std::cerr << "failed to get ASB\n"; return 1; }
 
 

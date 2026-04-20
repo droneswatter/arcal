@@ -15,16 +15,16 @@ using StatusData = uci::base::AbstractServiceBusConnectionStatusData;
 
 struct ErrorListener : public uci::base::AbstractServiceBusConnectionStatusListener {
     State lastState{State::INITIALIZING};
-    void statusChanged(const StatusData& s) override { lastState = s.state; }
+    void statusChanged(StatusData s) override { lastState = s.state; }
 };
 
 int main() {
-    auto* asb = uci_getAbstractServiceBusConnection("ErrorSvc");
+    auto* asb = uci_getAbstractServiceBusConnection("ErrorSvc", "DDS");
     assert(asb);
     assert(asb->getStatus().state == State::NORMAL);
 
     ErrorListener listener;
-    asb->addStatusListener(&listener);
+    asb->addStatusListener(listener);
     assert(listener.lastState == State::NORMAL && "listener must receive current state on registration");
 
     asb->shutdown();
@@ -34,7 +34,7 @@ int main() {
     assert(listener.lastState == State::FAILED
            && "registered listeners must be notified of the error state");
 
-    asb->removeStatusListener(&listener);
+    asb->removeStatusListener(listener);
     uci_destroyAbstractServiceBusConnection(asb);
     std::cout << "PASS CAL-005204\n";
     return 0;

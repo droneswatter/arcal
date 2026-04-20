@@ -30,14 +30,14 @@ public:
     virtual std::string getAbstractServiceBusConnectionVersion() const = 0;
 
     virtual StatusData getStatus() const = 0;
-    virtual void addStatusListener(StatusListener* listener) = 0;
-    virtual void removeStatusListener(StatusListener* listener) = 0;
+    virtual void addStatusListener(StatusListener& listener) = 0;
+    virtual void removeStatusListener(StatusListener& listener) = 0;
 
     virtual void registerExternalizer(Externalizer& externalizer) = 0;
 
+protected:
     virtual ~AbstractServiceBusConnection() = default;
 
-protected:
     AbstractServiceBusConnection() = default;
     AbstractServiceBusConnection(const AbstractServiceBusConnection&) = default;
     AbstractServiceBusConnection& operator=(const AbstractServiceBusConnection&) = default;
@@ -46,7 +46,10 @@ protected:
 } // namespace base
 } // namespace uci
 
-extern "C" {
-    uci::base::AbstractServiceBusConnection* uci_getAbstractServiceBusConnection(const char* serviceLabel);
-    void uci_destroyAbstractServiceBusConnection(uci::base::AbstractServiceBusConnection* asb);
-}
+extern "C"
+uci::base::AbstractServiceBusConnection* uci_getAbstractServiceBusConnection(
+    const std::string& serviceIdentifier,
+    const std::string& typeOfAbstractServiceBusConnection);
+
+extern "C"
+void uci_destroyAbstractServiceBusConnection(uci::base::AbstractServiceBusConnection* asb);

@@ -1,7 +1,8 @@
 #pragma once
 
-#include <stdexcept>
+#include <cstdint>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace uci {
@@ -9,19 +10,21 @@ namespace base {
 
 class UCIException : public std::runtime_error {
 public:
-    explicit UCIException(const std::string& reason)
-        : std::runtime_error(reason), errorCode_(0) {}
+    using ErrorCode = uint32_t;
 
-    explicit UCIException(const char* reason)
-        : std::runtime_error(reason), errorCode_(0) {}
+    explicit UCIException(const std::string& reason, ErrorCode errorCode = 0)
+        : std::runtime_error(reason), errorCode_(errorCode) {}
 
-    explicit UCIException(const std::ostringstream& reason)
-        : std::runtime_error(reason.str()), errorCode_(0) {}
+    explicit UCIException(const char* reason, ErrorCode errorCode = 0)
+        : std::runtime_error(reason), errorCode_(errorCode) {}
 
-    virtual int getErrorCode() const { return errorCode_; }
+    explicit UCIException(const std::ostringstream& reason, ErrorCode errorCode = 0)
+        : std::runtime_error(reason.str()), errorCode_(errorCode) {}
+
+    virtual ErrorCode getErrorCode() const noexcept { return errorCode_; }
 
 protected:
-    int errorCode_;
+    ErrorCode errorCode_;
 };
 
 } // namespace base
@@ -30,6 +33,6 @@ protected:
 #define throwUciException(msg) \
     do { \
         std::ostringstream _uci_oss; \
-        _uci_oss << msg << " [" << __FILE__ << ":" << __LINE__ << "]"; \
+        _uci_oss << msg; \
         throw uci::base::UCIException(_uci_oss); \
     } while(0)

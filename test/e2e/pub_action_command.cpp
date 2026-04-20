@@ -12,7 +12,7 @@
 #include <thread>
 
 int main() {
-    auto* asb = uci_getAbstractServiceBusConnection("e2e_pub");
+    auto* asb = uci_getAbstractServiceBusConnection("e2e_pub", "DDS");
     if (!asb) { std::cerr << "pub: failed to get ASB\n"; return 1; }
 
 

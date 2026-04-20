@@ -15,12 +15,12 @@ struct AbstractServiceBusConnectionStatusData {
     };
 
     StateEnum   state{INITIALIZING};
-    std::string detail;
+    std::string stateDetail;
 };
 
 class AbstractServiceBusConnectionStatusListener {
 public:
-    virtual void statusChanged(const AbstractServiceBusConnectionStatusData& status) = 0;
+    virtual void statusChanged(AbstractServiceBusConnectionStatusData newStatus) = 0;
 
     virtual ~AbstractServiceBusConnectionStatusListener() = default;
 

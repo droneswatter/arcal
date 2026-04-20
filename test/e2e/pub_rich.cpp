@@ -11,7 +11,7 @@
 #include <thread>
 
 int main() {
-    auto* asb = uci_getAbstractServiceBusConnection("pub_rich");
+    auto* asb = uci_getAbstractServiceBusConnection("pub_rich", "DDS");
     if (!asb) { std::cerr << "pub_rich: failed to get ASB\n"; return 1; }
 
     auto& writer = uci::type::ActionCommandMT::createWriter("ActionCommand", asb);

@@ -10,26 +10,26 @@ struct TestListener : public uci::base::AbstractServiceBusConnectionStatusListen
     int callCount{0};
     uci::base::AbstractServiceBusConnectionStatusData lastStatus;
 
-    void statusChanged(const uci::base::AbstractServiceBusConnectionStatusData& s) override {
+    void statusChanged(uci::base::AbstractServiceBusConnectionStatusData s) override {
         ++callCount;
         lastStatus = s;
     }
 };
 
 int main() {
-    auto* asb = uci_getAbstractServiceBusConnection("StatusTest");
+    auto* asb = uci_getAbstractServiceBusConnection("StatusTest", "DDS");
     assert(asb != nullptr);
 
     TestListener listener;
     assert(listener.callCount == 0);
 
-    asb->addStatusListener(&listener);
+    asb->addStatusListener(listener);
 
     // Must be called synchronously (or before addStatusListener returns) with current state
     assert(listener.callCount >= 1 && "Listener must be called immediately upon registration");
     assert(listener.lastStatus.state == uci::base::AbstractServiceBusConnectionStatusData::NORMAL);
 
-    asb->removeStatusListener(&listener);
+    asb->removeStatusListener(listener);
     asb->shutdown();
     uci_destroyAbstractServiceBusConnection(asb);
 
