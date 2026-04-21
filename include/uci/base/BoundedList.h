@@ -1,49 +1,55 @@
 #pragma once
 
+#include "Accessor.h"
 #include "UCIException.h"
+#include "accessorType.h"
 #include <cstddef>
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace uci {
 namespace base {
 
-template <typename T, std::size_t MinOccurs = 0, std::size_t MaxOccurs = std::numeric_limits<std::size_t>::max()>
-class BoundedList {
+template <typename T, uci::base::accessorType::AccessorType V>
+class BoundedList : public uci::base::Accessor {
 public:
-    using value_type      = T;
     using size_type       = std::size_t;
     using reference       = T&;
     using const_reference = const T&;
     using iterator        = typename std::vector<T>::iterator;
     using const_iterator  = typename std::vector<T>::const_iterator;
 
-    static constexpr size_type MIN_OCCURS = MinOccurs;
-    static constexpr size_type MAX_OCCURS = MaxOccurs;
+    static constexpr size_type UNBOUNDED_BOUND = std::numeric_limits<size_type>::max();
 
-    size_type size() const     { return data_.size(); }
-    bool empty() const         { return data_.empty(); }
-    size_type capacity() const { return data_.capacity(); }
+    AccessorType getAccessorType() const noexcept override { return V; }
+    void reset() override { data_.clear(); }
+    const std::string& typeName() const override {
+        static const std::string name{"list"};
+        return name;
+    }
 
-    void reserve(size_type n)  { data_.reserve(n); }
-    void pop_back()            { data_.pop_back(); }
-    void clear()               { data_.clear(); }
+    size_type size()     const noexcept { return data_.size(); }
+    bool      empty()    const noexcept { return data_.empty(); }
+    size_type capacity() const noexcept { return data_.capacity(); }
 
-    void resize(size_type n) {
-        if (n > MAX_OCCURS) throwUciException("BoundedList::resize exceeds maxOccurs=" << MAX_OCCURS);
+    void reserve(size_type n) { data_.reserve(n); }
+    void resize(size_type n, uci::base::accessorType::AccessorType = V) {
+        if (n > maxOccurs_) throwUciException("BoundedList::resize exceeds maxOccurs=" << maxOccurs_);
         data_.resize(n);
     }
+    void pop_back() noexcept { data_.pop_back(); }
+    void clear()    noexcept { data_.clear(); }
 
     void push_back(const T& v) {
-        if (data_.size() >= MAX_OCCURS)
-            throwUciException("BoundedList::push_back exceeds maxOccurs=" << MAX_OCCURS);
+        if (data_.size() >= maxOccurs_)
+            throwUciException("BoundedList::push_back exceeds maxOccurs=" << maxOccurs_);
         data_.push_back(v);
     }
-
     template <typename U>
     void push_back(U&& v) {
-        if (data_.size() >= MAX_OCCURS)
-            throwUciException("BoundedList::push_back exceeds maxOccurs=" << MAX_OCCURS);
+        if (data_.size() >= maxOccurs_)
+            throwUciException("BoundedList::push_back exceeds maxOccurs=" << maxOccurs_);
         data_.push_back(std::forward<U>(v));
     }
 
@@ -57,17 +63,21 @@ public:
     iterator       end()         { return data_.end(); }
     const_iterator end()   const { return data_.end(); }
 
-    size_type getMinimumOccurs() const { return MIN_OCCURS; }
-    size_type getMaximumOccurs() const { return MAX_OCCURS; }
-    size_type max_size() const         { return MAX_OCCURS; }
-    size_type min_size() const         { return MIN_OCCURS; }
+    size_type getMinimumOccurs() const noexcept { return minOccurs_; }
+    size_type getMaximumOccurs() const noexcept { return maxOccurs_; }
+    size_type max_size()         const noexcept { return maxOccurs_; }
+    size_type min_size()         const noexcept { return minOccurs_; }
 
-    BoundedList() = default;
+protected:
+    BoundedList(size_type minOccurs = 0, size_type maxOccurs = UNBOUNDED_BOUND)
+        : minOccurs_(minOccurs), maxOccurs_(maxOccurs) {}
     BoundedList(const BoundedList&) = default;
     BoundedList& operator=(const BoundedList&) = default;
-    ~BoundedList() = default;
+    ~BoundedList() override = default;
 
 private:
+    size_type minOccurs_{0};
+    size_type maxOccurs_{UNBOUNDED_BOUND};
     std::vector<T> data_;
 };
 

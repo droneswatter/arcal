@@ -10,6 +10,10 @@ add_library(arcal_conform OBJECT
     conf_asb.cpp
     conf_enum.cpp
     conf_lifetime.cpp
+    conf_externalizer.cpp
+    conf_generated_global.cpp
+    conf_lists.cpp
+    conf_uuid.cpp
 )
 
 target_include_directories(arcal_conform PRIVATE
@@ -27,3 +31,9 @@ target_link_libraries(arcal_conform_client_link PRIVATE
 target_include_directories(arcal_conform_client_link PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
+
+add_custom_target(arcal_conformance ALL
+    DEPENDS arcal_conform arcal_conform_client_link
+)
+
+add_test(NAME CONFORM-client-link COMMAND arcal_conform_client_link)

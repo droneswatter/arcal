@@ -88,6 +88,35 @@ def is_list(element) -> bool:
 # Schema model classes
 # ---------------------------------------------------------------------------
 
+PRIMITIVE_ACCESSOR_TYPE_MAP: dict[str, str] = {
+    "boolean":      "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "byte":         "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "short":        "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "int":          "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "long":         "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "integer":      "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "decimal":      "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "float":        "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "double":       "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "unsignedByte": "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "unsignedShort":"uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "unsignedInt":  "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "unsignedLong": "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "base64Binary": "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "hexBinary":    "uci::base::accessorType::ACCESSOR_TYPE_SIMPLE_PRIMITIVE",
+    "string":       "uci::base::accessorType::ACCESSOR_TYPE_STRING",
+    "anyURI":       "uci::base::accessorType::ACCESSOR_TYPE_STRING",
+    "dateTime":     "uci::base::accessorType::ACCESSOR_TYPE_STRING",
+    "dateTimeStamp":"uci::base::accessorType::ACCESSOR_TYPE_STRING",
+    "date":         "uci::base::accessorType::ACCESSOR_TYPE_STRING",
+    "time":         "uci::base::accessorType::ACCESSOR_TYPE_STRING",
+    "duration":     "uci::base::accessorType::ACCESSOR_TYPE_STRING",
+    "ID":           "uci::base::accessorType::ACCESSOR_TYPE_STRING",
+    "IDREF":        "uci::base::accessorType::ACCESSOR_TYPE_STRING",
+    "NMTOKEN":      "uci::base::accessorType::ACCESSOR_TYPE_STRING",
+}
+
+
 class FieldModel:
     def __init__(self, name, type_name, optional=False, list_kind=None,
                  min_occurs=0, max_occurs_val=1, resolved_cxx_type=None):
@@ -100,6 +129,7 @@ class FieldModel:
         self.list_kind = list_kind  # None, "bounded", "unbounded"
         self.min_occurs = min_occurs
         self.max_occurs_val = max_occurs_val
+        self.accessor_type = "uci::base::accessorType::ACCESSOR_TYPE_COMPLEX"  # resolved later
 
 
 class ChoiceModel:
@@ -147,6 +177,27 @@ class SchemaParser:
         for tree in self._trees:
             root = tree.getroot()
             self._parse_schema(root)
+
+        self._resolve_accessor_types()
+
+    def _get_accessor_type(self, type_name: str) -> str:
+        if type_name in PRIMITIVE_ACCESSOR_TYPE_MAP:
+            return PRIMITIVE_ACCESSOR_TYPE_MAP[type_name]
+        if type_name in self.types:
+            t = self.types[type_name]
+            if t.is_enum:
+                return "uci::base::accessorType::ACCESSOR_TYPE_ENUMERATION"
+            if t.is_string_restriction:
+                return "uci::base::accessorType::ACCESSOR_TYPE_STRING"
+        return "uci::base::accessorType::ACCESSOR_TYPE_COMPLEX"
+
+    def _resolve_accessor_types(self):
+        for type_model in self.types.values():
+            for field in type_model.fields:
+                field.accessor_type = self._get_accessor_type(field.type_name)
+            for choice in type_model.choices:
+                for v in choice.variants:
+                    v.accessor_type = self._get_accessor_type(v.type_name)
 
     def _parse_schema(self, root):
         ns = {"xs": XSD_NS}
@@ -295,8 +346,8 @@ ACCESSOR_H_TEMPLATE = """\
 {% endif %}\
 {% endfor %}\
 {% endfor %}\
-#include "uci/base/BoundedList.h"
-#include "uci/base/SimpleList.h"
+#include "uci/base/BoundedListImpl.h"
+#include "uci/base/SimpleListImpl.h"
 #include <cstdint>
 #include <string>
 
@@ -364,11 +415,11 @@ public:
 
 {% for field in type.fields %}\
 {% if field.list_kind == "bounded" %}\
-    uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}>& get{{ field.cxx_name }}() { return {{ field.name }}_; }
-    const uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}>& get{{ field.cxx_name }}() const { return {{ field.name }}_; }
+    uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() { return {{ field.name }}_; }
+    const uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() const { return {{ field.name }}_; }
 {% elif field.list_kind == "unbounded" %}\
-    uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}>& get{{ field.cxx_name }}() { return {{ field.name }}_; }
-    const uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}>& get{{ field.cxx_name }}() const { return {{ field.name }}_; }
+    uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() { return {{ field.name }}_; }
+    const uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() const { return {{ field.name }}_; }
 {% elif field.optional %}\
     bool has{{ field.cxx_name }}() const { return has{{ field.cxx_name }}_; }
     {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& enable{{ field.cxx_name }}() { has{{ field.cxx_name }}_ = true; return {{ field.name }}_; }
@@ -407,9 +458,9 @@ public:
 private:
 {% for field in type.fields %}\
 {% if field.list_kind == "bounded" %}\
-    uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}> {{ field.name }}_;
+    uci::base::BoundedListImpl<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}> {{ field.name }}_;
 {% elif field.list_kind == "unbounded" %}\
-    uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}> {{ field.name }}_;
+    uci::base::SimpleListImpl<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}> {{ field.name }}_;
 {% elif field.optional %}\
     bool has{{ field.cxx_name }}_{false};
     {{ field.cxx_type | qualify(primitive_types, field.type_name) }} {{ field.name }}_;
