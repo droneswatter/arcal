@@ -1,16 +1,16 @@
 # arcal — A Reference C++ CAL
 
-arcal is a reference implementation of the OMS Critical Abstraction Layer (CAL) C++ binding, as specified in OMSC-SPC-004 and OMSC-SPC-008. It provides a complete, buildable, government-owned starting point for programs that need a standards-conformant CAL without writing one from scratch.
+`arcal` is a reference implementation of the OMS Critical Abstraction Layer (CAL) C++ binding, as specified in OMSC-SPC-004 and OMSC-SPC-008. It provides a complete, buildable, government-owned starting point for programs that need a standards-conformant CAL without writing one from scratch.
 
 ## What it is
 
-The OMS standard defines the CAL as a transport-agnostic pub/sub API that decouples mission-system services from the underlying communications technology. The specification defines the interface but ships no implementation. arcal fills that gap.
+The OMS standard defines the CAL as a transport-agnostic pub/sub API that decouples mission-system services from the underlying communications technology. The specification defines the interface but ships no implementation. `arcal` fills that gap.
 
 **Transport:** Eclipse Cyclone DDS (Apache 2.0). DDS pub/sub maps directly onto CAL semantics, and Cyclone DDS is decentralized — no broker, no central manager, peer discovery via SPDP/SEDP over multicast. A two-host test requires only that both hosts are on the same network; no additional infrastructure.
 
 **Wire encoding:** CDR (Common Data Representation, OMG formal/2002-06-51) over opaque DDS topics. One DDS topic per OMS global element type. CDR is implemented directly with no third-party serialization library, keeping the OMS type system sovereign and the encoding swappable via the Externalizer plugin mechanism defined in OMSC-SPC-008.
 
-**Type system:** OMS message schemas are defined as XSD in the UCI repository. arcal includes a Python schema compiler (`tools/schema_compiler/compiler.py`) that reads those XSDs and generates a complete set of C++ Accessor classes plus CDR serialization handlers. The generated code is not checked in; it is produced as a build step.
+**Type system:** OMS message schemas are defined as XSD in the UCI repository. `arcal` includes a Python schema compiler (`tools/schema_compiler/compiler.py`) that reads those XSDs and generates a complete set of C++ Accessor classes plus CDR serialization handlers. The generated code is not checked in; it is produced as a build step.
 
 **Namespace mapping:** `https://www.vdl.afrl.af.mil/programs/oam` → `uci`, per OMSC-SPC-008 §4. Additional namespace mappings can be supplied without modifying the compiler.
 
@@ -22,9 +22,9 @@ The OMS standard defines the CAL as a transport-agnostic pub/sub API that decoup
 
 **Why CDR?** It is the native DDS wire format, requires no dependencies, is well-specified, and is efficient for the structured binary payloads OMS messages contain. The Externalizer plugin interface means it can be replaced (e.g. with JSON or Protobuf) without touching application code.
 
-**Why a Python schema compiler?** The UCI XSD corpus is ~147k lines across 16 files defining ~5,600 types. Maintaining hand-written C++ for all of them is not feasible. The compiler runs in under 2 seconds and produces correct, consistent output. Generated files are excluded from version control.
+**Why a Python schema compiler?** The UCI XSD corpus is large and defines thousands of types. Maintaining hand-written C++ for all of them is not feasible. The compiler keeps generated output correct and consistent. Generated files are excluded from version control.
 
-**Why unity builds?** The CDR handlers are 5,600+ small source files. Compiling them individually would take tens of minutes. Unity build batches them into groups of 50, reducing compiler invocations by ~100x and cutting build time to under 4 minutes on an 8-core machine.
+**Why unity builds?** The CDR handlers generate thousands of small source files. Compiling them individually is slow and memory-intensive. Unity builds batch related files together, reducing compiler invocations and keeping generated-code builds practical on developer machines.
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ The OMS standard defines the CAL as a transport-agnostic pub/sub API that decoup
 | CycloneDDS C library | 0.10.5 | DDS core |
 | CycloneDDS-CXX binding | 0.10.5 | C++ DDS API + `idlc` IDL compiler |
 
-> **Use clang-20.** Building `arcal_externalizer_cdr` (5,614 generated files) with clang-20 takes ~136s and ~4 GB peak RAM. GCC 13 takes ~260s and ~7 GB.
+> **Use clang-20 when available.** The generated CDR externalizer is large, and clang generally compiles it faster with lower peak memory use than GCC in this project.
 
 Install Python dependencies:
 ```bash
@@ -80,21 +80,16 @@ vcpkg will automatically install `cyclonedds[idlc]` and `cyclonedds-cxx[idllib]`
 | `libarcal_externalizer_cdr.so` | CDR externalizer plugin; loaded by the CAL at startup |
 | Network multicast | Required for DDS peer discovery on a LAN; loopback works for single-host |
 
-### Memory requirements
+### Build resources
 
-| Compiler | `-j8` peak RAM | `-j4` peak RAM |
-|----------|---------------|---------------|
-| clang-20 | ~4 GB | ~2 GB |
-| GCC 13 | ~7 GB | ~4 GB |
+The generated CDR externalizer is the heaviest part of the build. Peak memory scales with compiler choice, unity batch size, and parallelism. If the build runs out of memory, reduce the job count first, then reduce `ARCAL_UNITY_BATCH_SIZE`.
 
-Peak memory scales with parallelism. On WSL2, set the memory limit in `~/.wslconfig`:
+On WSL2, set a memory limit in `~/.wslconfig` that leaves enough room for parallel C++ compilation:
 ```ini
 [wsl2]
 memory=14GB
 swap=4GB
 ```
-
-If you still run out of memory, reduce the batch size: `-DARCAL_UNITY_BATCH_SIZE=10`.
 
 ## Building
 
@@ -104,7 +99,7 @@ git clone <repo>
 cd arcal
 git submodule update --init --recursive
 
-# Generate C++ source from XSD schemas (~2 seconds)
+# Generate C++ source from XSD schemas
 uv run tools/schema_compiler/compiler.py \
     --schema schema/OAC-STD-UCI_V2.5 \
     --out include
@@ -117,7 +112,7 @@ cmake -S . -B build \
     -DCMAKE_BUILD_TYPE=Debug \
     -G Ninja
 
-# Build (~2.5 minutes with clang-20 on 8 cores)
+# Build
 cmake --build build -j8
 ```
 
@@ -261,7 +256,7 @@ ctest --test-dir build --output-on-failure
 |---------|-------------|
 | `E2E-ActionCommand-PubSub` | Publisher and subscriber exchange an ActionCommand over live DDS (two processes) |
 | `E2E-TopicIsolation` | Messages on separate topics are not delivered to the wrong subscriber (two processes) |
-| `E2E-content-fidelity` | All scalar fields round-trip correctly through CDR serialization |
+| `E2E-content-fidelity` | Message content survives CAL publish/subscribe delivery |
 | `E2E-multi-message` | Multiple sequential messages are delivered in order |
 | `E2E-listener-lifecycle` | Listener added and removed mid-stream receives only in-scope messages |
 | `E2E-two-writers-one-reader` | Two concurrent writers deliver to a single reader without loss |

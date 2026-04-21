@@ -147,12 +147,18 @@ if(ARCAL_BUILD_TESTS)
 endif()
 
 if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
-    set(ARCAL_CERT_CAL_LIB          "arcal"                  CACHE STRING "" FORCE)
-    set(ARCAL_CERT_EXTERNALIZER_LIB "arcal_externalizer_cdr" CACHE STRING "" FORCE)
+    add_library(arcal_cert_cal INTERFACE)
+    target_link_libraries(arcal_cert_cal INTERFACE arcal arcal_externalizer_cdr)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_link_options(arcal_cert_cal INTERFACE "LINKER:--no-as-needed")
+    endif()
+
+    set(ARCAL_CERT_CAL_LIB          "arcal_cert_cal"         CACHE STRING "" FORCE)
     set(ARCAL_CERT_BUILD_CERT       ${ARCAL_BUILD_TESTS}     CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_BUILD_E2E        ${ARCAL_BUILD_E2E_TESTS} CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_TEST_ENV
         "CYCLONEDDS_URI=file://${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml"
+        "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:arcal_externalizer_cdr>:$ENV{LD_LIBRARY_PATH}"
         CACHE STRING "" FORCE)
     add_subdirectory(test/arcal-cert)
 endif()
