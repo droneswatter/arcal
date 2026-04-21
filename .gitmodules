@@ -1,3 +1,6 @@
 [submodule "schema"]
 	path = schema
 	url = https://github.com/modular-af/UCI
+[submodule "test/arcal-cert"]
+	path = test/arcal-cert
+	url = https://github.com/droneswatter/arcal-cert.git

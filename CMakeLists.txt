@@ -142,13 +142,19 @@ endif()
 
 if(ARCAL_BUILD_TESTS)
     add_subdirectory(test/conform)
-    add_subdirectory(test/cert)
     add_subdirectory(test/json)
     add_subdirectory(test/cdr)
 endif()
 
-if(ARCAL_BUILD_E2E_TESTS)
-    add_subdirectory(test/e2e)
+if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
+    set(ARCAL_CERT_CAL_LIB          "arcal"                  CACHE STRING "" FORCE)
+    set(ARCAL_CERT_EXTERNALIZER_LIB "arcal_externalizer_cdr" CACHE STRING "" FORCE)
+    set(ARCAL_CERT_BUILD_CERT       ${ARCAL_BUILD_TESTS}     CACHE BOOL   "" FORCE)
+    set(ARCAL_CERT_BUILD_E2E        ${ARCAL_BUILD_E2E_TESTS} CACHE BOOL   "" FORCE)
+    set(ARCAL_CERT_TEST_ENV
+        "CYCLONEDDS_URI=file://${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml"
+        CACHE STRING "" FORCE)
+    add_subdirectory(test/arcal-cert)
 endif()
 
 # ---------------------------------------------------------------------------
