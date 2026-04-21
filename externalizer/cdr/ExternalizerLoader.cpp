@@ -9,9 +9,9 @@ namespace arcal { namespace externalizer { namespace cdr {
 } } }
 
 // ---------------------------------------------------------------------------
-// Auto-registration: when arcal_externalizer_cdr.so is loaded, wire CDR into
-// both the transport bridge (DdsReader/DdsWriter) and the ExternalizerLoader
-// factory slot (so uci_getExternalizerLoader can return a CdrExternalizer).
+// Built-in registration: when libarcal.so is loaded, wire CDR into both the
+// transport bridge (DdsReader/DdsWriter) and the ExternalizerLoader factory
+// slot (so uci_getExternalizerLoader can return a CdrExternalizer).
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -42,9 +42,8 @@ struct CdrAutoRegister {
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
-// Plugin entry point: called by ArcalExternalizerLoader via dlopen when the
-// encoding is "CDR", and also available for direct use by tools that link
-// against arcal_externalizer_cdr explicitly.
+// Factory entry point retained for direct in-process use and symmetry with the
+// JSON plugin entry point. CDR is built into libarcal and is not dlopened.
 // ---------------------------------------------------------------------------
 
 extern "C" {

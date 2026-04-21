@@ -8,7 +8,7 @@
 
 // ---------------------------------------------------------------------------
 // Hardcoded encoding → plugin soname map.
-// CDR is special-cased (already in-process via arcal_externalizer_cdr).
+// CDR is special-cased because it is built into libarcal.
 // All other encodings are loaded on demand via dlopen.
 // The fixed map prevents arbitrary .so injection via encoding strings.
 // ---------------------------------------------------------------------------
@@ -19,7 +19,7 @@ static const std::unordered_map<std::string, const char*> PLUGIN_MAP = {
 
 namespace arcal {
 
-// Declared in CdrBridge.cpp — creates a CdrExternalizer via the registered factory.
+// Declared in CdrBridge.cpp — creates a built-in CdrExternalizer via the registered factory.
 uci::base::Externalizer* arcalMakeCdrExternalizer();
 
 namespace {

@@ -9,7 +9,8 @@ cd "$ROOT"
 
 PREFIX="${ARCAL_PREFIX:-$HOME/.local}"
 BUILD_TYPE="${CMAKE_BUILD_TYPE:-Debug}"
-JOBS=$(nproc 2>/dev/null || echo 4)
+CXX_COMPILER="${CMAKE_CXX_COMPILER:-clang++-20}"
+C_COMPILER="${CMAKE_C_COMPILER:-clang-20}"
 
 echo "==> Regenerating schema headers and CDR handlers..."
 uv run tools/schema_compiler/compiler.py \
@@ -18,11 +19,13 @@ uv run tools/schema_compiler/compiler.py \
 
 echo "==> Configuring CMake..."
 cmake -S . -B build \
+    -DCMAKE_CXX_COMPILER="$CXX_COMPILER" \
+    -DCMAKE_C_COMPILER="$C_COMPILER" \
     -DCMAKE_PREFIX_PATH="$PREFIX" \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     -G Ninja
 
 echo "==> Building..."
-cmake --build build -j"$JOBS"
+cmake --build build
 
 echo "==> Done. Run tests with: ctest --test-dir build --output-on-failure"

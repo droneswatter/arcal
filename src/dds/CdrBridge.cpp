@@ -18,13 +18,13 @@ void registerCdrExternalizerFactory(CdrExternalizerFactory f) {
 
 uci::base::Externalizer* arcalMakeCdrExternalizer() {
     if (!g_extFactory)
-        throwUciException("CDR externalizer not available — link against arcal_externalizer_cdr");
+        throwUciException("CDR externalizer not available");
     return g_extFactory();
 }
 
 void cdrSerialize(const uci::base::Accessor& obj, std::vector<uint8_t>& out) {
     if (!g_serialize)
-        throwUciException("CDR bridge not registered — link against arcal_externalizer_cdr");
+        throwUciException("CDR bridge not registered");
     g_serialize(obj, out);
 }
 
@@ -34,7 +34,7 @@ uint32_t cdrTypeTag(const uci::base::Accessor& obj) {
 
 void cdrDeserialize(uint32_t tag, const std::vector<uint8_t>& in, uci::base::Accessor& obj) {
     if (!g_deserialize)
-        throwUciException("CDR bridge not registered — link against arcal_externalizer_cdr");
+        throwUciException("CDR bridge not registered");
     g_deserialize(tag, in, 0, obj);
 }
 

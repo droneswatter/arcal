@@ -42,7 +42,7 @@ The OMS standard defines the CAL as a transport-agnostic pub/sub API that decoup
 | CycloneDDS C library | 0.10.5 | DDS core |
 | CycloneDDS-CXX binding | 0.10.5 | C++ DDS API + `idlc` IDL compiler |
 
-> **Use clang-20 when available.** The generated CDR externalizer is large, and clang generally compiles it faster with lower peak memory use than GCC in this project.
+> **Use clang-20 when available.** The generated CDR codec is large, and clang generally compiles it faster with lower peak memory use than GCC in this project.
 
 Install Python dependencies:
 ```bash
@@ -77,12 +77,12 @@ vcpkg will automatically install `cyclonedds[idlc]` and `cyclonedds-cxx[idllib]`
 | Dependency | Notes |
 |-----------|-------|
 | CycloneDDS shared libraries | Must be on `LD_LIBRARY_PATH` if installed to a non-standard prefix |
-| `libarcal_externalizer_cdr.so` | CDR externalizer plugin; loaded by the CAL at startup |
+| Built-in CDR codec | Included in `libarcal.so`; used internally by the DDS transport |
 | Network multicast | Required for DDS peer discovery on a LAN; loopback works for single-host |
 
 ### Build resources
 
-The generated CDR externalizer is the heaviest part of the build. Peak memory scales with compiler choice, unity batch size, and parallelism. If the build runs out of memory, reduce the job count first, then reduce `ARCAL_UNITY_BATCH_SIZE`.
+The generated CDR codec is the heaviest part of the build. Peak memory scales with compiler choice, unity batch size, and parallelism. If the build runs out of memory, reduce the job count first, then reduce `ARCAL_UNITY_BATCH_SIZE`.
 
 On WSL2, set a memory limit in `~/.wslconfig` that leaves enough room for parallel C++ compilation:
 ```ini
@@ -207,9 +207,9 @@ unsigned long n = reader->read(/*timeoutMs=*/100, /*maxMessages=*/1, listener);
 // listener.handleMessage() was called n times
 ```
 
-### Loading the CDR externalizer
+### Using the CDR externalizer
 
-The externalizer is a shared library plugin loaded via the standard loader interface:
+The CDR externalizer is built into `libarcal.so` and is available through the standard loader interface:
 
 ```cpp
 #include "uci/base/ExternalizerLoader.h"
@@ -218,7 +218,7 @@ uci::base::ExternalizerLoader* loader = uci_getExternalizerLoader();
 uci::base::Externalizer* ext = loader->getExternalizer("CDR", "2.5.0", "2.5.0");
 ```
 
-Or link directly against `arcal_externalizer_cdr` and the loader is available automatically.
+No separate CDR plugin library is required.
 
 ### DDS network configuration
 
@@ -280,7 +280,8 @@ arcal/
 ├── cmake/
 │   └── install-cyclonedds.sh   # Builds CycloneDDS from source
 ├── externalizer/
-│   └── cdr/                    # CDR externalizer plugin (shared library)
+│   ├── cdr/                    # Built-in CDR codec and Externalizer implementation
+│   └── json/                   # JSON externalizer plugin
 ├── include/
 │   └── uci/
 │       ├── base/               # Hand-written abstract interfaces

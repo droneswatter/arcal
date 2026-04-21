@@ -13,10 +13,10 @@ constexpr uint32_t fnv1a32(const char* s, uint32_t h = 2166136261u) {
     return *s ? fnv1a32(s + 1, (h ^ static_cast<uint8_t>(*s)) * 16777619u) : h;
 }
 
-// Internal CDR dispatch — wired by arcal_externalizer_cdr at shared-library
-// load time via a static initializer.  DdsReader and DdsWriter call these
-// instead of going through the Externalizer API, keeping CDR an internal
-// transport detail invisible to application code.
+// Internal CDR dispatch — wired into libarcal at shared-library load time via
+// a static initializer. DdsReader and DdsWriter call these instead of going
+// through the Externalizer API, keeping CDR an internal transport detail
+// invisible to application code.
 //
 // Wire format: [ type_tag: uint32_t LE | CDR payload bytes... ]
 // The tag is the FNV-1a 32-bit hash of the UCI type name.
@@ -29,8 +29,8 @@ void     cdrSerialize  (const uci::base::Accessor& obj, std::vector<uint8_t>& ou
 uint32_t cdrTypeTag    (const uci::base::Accessor& obj);
 void     cdrDeserialize(uint32_t tag, const std::vector<uint8_t>& in, uci::base::Accessor& obj);
 
-// Called by arcal_externalizer_cdr at load time so the ExternalizerLoader in
-// arcal core can instantiate CdrExternalizer without a circular link dependency.
+// Called by the built-in CDR registration code so the ExternalizerLoader can
+// instantiate CdrExternalizer for callers that explicitly request "CDR".
 using CdrExternalizerFactory = uci::base::Externalizer*(*)();
 void registerCdrExternalizerFactory(CdrExternalizerFactory f);
 

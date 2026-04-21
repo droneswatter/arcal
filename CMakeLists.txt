@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 project(arcal VERSION 0.1.0 LANGUAGES CXX C)
 
+file(WRITE "${CMAKE_BINARY_DIR}/.gitignore" "*\n")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -87,6 +89,49 @@ add_custom_target(arcal_generated DEPENDS ${SCHEMA_STAMP})
 # Core library
 # ---------------------------------------------------------------------------
 
+file(GLOB_RECURSE CDR_GENERATED_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/generated/*_cdr.cpp
+    ${CMAKE_SOURCE_DIR}/src/generated/cdr_register_all.cpp
+)
+
+set_source_files_properties(
+    ${CMAKE_SOURCE_DIR}/src/generated/cdr_register_all.cpp
+    ${CMAKE_SOURCE_DIR}/src/generated/factories_all.cpp
+    ${CMAKE_SOURCE_DIR}/src/generated/accessor_factory_all.cpp
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
+)
+
+add_library(arcal_cdr_objects OBJECT
+    externalizer/cdr/CdrExternalizer.cpp
+    externalizer/cdr/ExternalizerLoader.cpp
+    ${CDR_GENERATED_SOURCES}
+)
+
+add_dependencies(arcal_cdr_objects arcal_generated)
+
+target_include_directories(arcal_cdr_objects PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/externalizer/cdr
+)
+
+set_target_properties(arcal_cdr_objects PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    UNITY_BUILD ON
+    UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
+)
+
+target_precompile_headers(arcal_cdr_objects PRIVATE
+    "${CMAKE_SOURCE_DIR}/externalizer/cdr/CdrPrimitives.h"
+    "${CMAKE_SOURCE_DIR}/externalizer/cdr/CdrRegistry.h"
+    "${CMAKE_SOURCE_DIR}/include/uci/base/BoundedList.h"
+    "${CMAKE_SOURCE_DIR}/include/uci/base/SimpleList.h"
+)
+
+# Generated CDR files are never debugged directly; line tables are enough for
+# stack traces and cost a fraction of full DWARF (-g). -pipe avoids temp files
+# between compiler stages.
+target_compile_options(arcal_cdr_objects PRIVATE -g1 -pipe)
+
 add_library(arcal SHARED
     src/UUID.cpp
     src/dds/CdrBridge.cpp
@@ -98,6 +143,7 @@ add_library(arcal SHARED
     src/generated/factories_all.cpp
     src/generated/accessor_factory_all.cpp
     src/ExternalizerLoader.cpp
+    $<TARGET_OBJECTS:arcal_cdr_objects>
 )
 
 add_dependencies(arcal arcal_generated arcal_idl)
@@ -123,10 +169,9 @@ if(MOLD_LINKER)
 endif()
 
 # ---------------------------------------------------------------------------
-# CDR Externalizer plugin
+# Externalizer plugins
 # ---------------------------------------------------------------------------
 
-add_subdirectory(externalizer/cdr)
 add_subdirectory(externalizer/json)
 
 # ---------------------------------------------------------------------------
@@ -147,18 +192,11 @@ if(ARCAL_BUILD_TESTS)
 endif()
 
 if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
-    add_library(arcal_cert_cal INTERFACE)
-    target_link_libraries(arcal_cert_cal INTERFACE arcal arcal_externalizer_cdr)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_link_options(arcal_cert_cal INTERFACE "LINKER:--no-as-needed")
-    endif()
-
-    set(ARCAL_CERT_CAL_LIB          "arcal_cert_cal"         CACHE STRING "" FORCE)
+    set(ARCAL_CERT_CAL_LIB          "arcal"                  CACHE STRING "" FORCE)
     set(ARCAL_CERT_BUILD_CERT       ${ARCAL_BUILD_TESTS}     CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_BUILD_E2E        ${ARCAL_BUILD_E2E_TESTS} CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_TEST_ENV
         "CYCLONEDDS_URI=file://${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml"
-        "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:arcal_externalizer_cdr>:$ENV{LD_LIBRARY_PATH}"
         CACHE STRING "" FORCE)
     add_subdirectory(test/arcal-cert)
 endif()
@@ -167,7 +205,7 @@ endif()
 # Install
 # ---------------------------------------------------------------------------
 
-install(TARGETS arcal arcal_externalizer_cdr arcal_externalizer_json
+install(TARGETS arcal arcal_externalizer_json
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )

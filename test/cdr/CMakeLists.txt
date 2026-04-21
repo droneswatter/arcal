@@ -1,6 +1,3 @@
 add_executable(cdr_roundtrip cdr_roundtrip.cpp)
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_link_options(cdr_roundtrip PRIVATE "LINKER:--no-as-needed")
-endif()
-target_link_libraries(cdr_roundtrip PRIVATE arcal arcal_externalizer_cdr)
+target_link_libraries(cdr_roundtrip PRIVATE arcal)
 add_test(NAME CDR-roundtrip COMMAND cdr_roundtrip)

@@ -1,5 +1,3 @@
-build/
-cmake-build-*/
 include/uci/type/
 src/generated/
 tools/schema_compiler/__pycache__/

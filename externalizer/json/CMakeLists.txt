@@ -3,6 +3,11 @@ file(GLOB_RECURSE JSON_GENERATED_SOURCES
     ${PROJECT_SOURCE_DIR}/src/generated/json/json_register_all.cpp
 )
 
+set_source_files_properties(
+    ${PROJECT_SOURCE_DIR}/src/generated/json/json_register_all.cpp
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
+)
+
 add_library(arcal_externalizer_json SHARED
     JsonExternalizer.cpp
     ExternalizerLoader.cpp

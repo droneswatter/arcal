@@ -24,10 +24,7 @@ target_include_directories(arcal_conform PRIVATE
 # the free functions — no link needed, just the include path above.
 
 add_executable(arcal_conform_client_link conform_client_link.cpp)
-target_link_libraries(arcal_conform_client_link PRIVATE
-    arcal
-    arcal_externalizer_cdr
-)
+target_link_libraries(arcal_conform_client_link PRIVATE arcal)
 target_include_directories(arcal_conform_client_link PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
