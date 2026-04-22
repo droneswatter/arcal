@@ -1,7 +1,8 @@
 #pragma once
-// Runtime registry mapping UCI type names to JSON serialize functions.
+// Runtime registry mapping UCI type names to JSON serialize/deserialize functions.
 
 #include "uci/base/Accessor.h"
+#include <nlohmann/json_fwd.hpp>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -12,10 +13,14 @@ namespace json {
 
 using JsonSerializeFn       = void(*)(const uci::base::Accessor&, std::string&);
 using JsonSerializeFieldsFn = void(*)(const uci::base::Accessor&, std::string&, bool&);
+using JsonDeserializeFn       = void(*)(const nlohmann::json&, uci::base::Accessor&);
+using JsonDeserializeFieldsFn = void(*)(const nlohmann::json&, uci::base::Accessor&);
 
 struct JsonHandlers {
     JsonSerializeFn       serialize;        // emits { "k":v, ... }
     JsonSerializeFieldsFn serialize_fields; // emits  "k":v, ...  (no braces, for base expansion)
+    JsonDeserializeFn       deserialize;
+    JsonDeserializeFieldsFn deserialize_fields;
 };
 
 class JsonRegistry {

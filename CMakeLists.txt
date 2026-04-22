@@ -17,6 +17,7 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 find_package(CycloneDDS   REQUIRED)
 find_package(CycloneDDS-CXX REQUIRED)
+find_package(nlohmann_json 3.12.0 REQUIRED)
 
 # ---------------------------------------------------------------------------
 # IDL Compiler — arcal_payload.idl → C/C++ type support

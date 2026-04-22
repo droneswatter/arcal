@@ -10,6 +10,8 @@ The OMS standard defines the CAL as a transport-agnostic pub/sub API that decoup
 
 **Wire encoding:** CDR (Common Data Representation, OMG formal/2002-06-51) over opaque DDS topics. One DDS topic per OMS global element type. CDR is implemented directly with no third-party serialization library, keeping the OMS type system sovereign and the encoding swappable via the Externalizer plugin mechanism defined in OMSC-SPC-008.
 
+**Human-readable externalization:** The JSON externalizer plugin provides bidirectional `read()` and `write()` support for generated UCI Accessors. It is useful for debugging, test fixtures, golden files, tooling, and integration points that need inspectable payloads without changing the DDS/CDR transport path.
+
 **Type system:** OMS message schemas are defined as XSD in the UCI repository. `arcal` includes a Python schema compiler (`tools/schema_compiler/compiler.py`) that reads those XSDs and generates a complete set of C++ Accessor classes plus CDR serialization handlers. The generated code is not checked in; it is produced as a build step.
 
 **Namespace mapping:** `https://www.vdl.afrl.af.mil/programs/oam` → `uci`, per OMSC-SPC-008 §4. Additional namespace mappings can be supplied without modifying the compiler.
@@ -21,6 +23,8 @@ The OMS standard defines the CAL as a transport-agnostic pub/sub API that decoup
 **Why opaque topics?** Each topic carries an `arcal_dds::OpaquePayload` envelope (a `sequence<octet>` defined in `src/dds/arcal_payload.idl`) rather than a type-per-message IDL. This keeps the OMS XSD as the single source of truth — there is no parallel IDL schema to maintain and no risk of the DDS type system diverging from the OMS type system. `dds::core::BytesTopicType` was considered but is gated behind `OMG_DDS_X_TYPES_BUILTIN_TOPIC_TYPES_SUPPORT`, which standard CycloneDDS 0.10.x builds do not enable; a single shared IDL type is equivalent and fully portable.
 
 **Why CDR?** It is the native DDS wire format, requires no dependencies, is well-specified, and is efficient for the structured binary payloads OMS messages contain. The Externalizer plugin interface means it can be replaced (e.g. with JSON or Protobuf) without touching application code.
+
+**Why JSON too?** A binary wire format is great for transport but awkward for humans. The generated JSON externalizer walks the same UCI Accessor tree recursively, including inherited fields, optionals, lists, choices, enumerations, and simple type restrictions. That gives programs a standards-shaped text representation for diagnostics and fixtures while preserving the schema compiler as the single source of truth.
 
 **Why a Python schema compiler?** The UCI XSD corpus is large and defines thousands of types. Maintaining hand-written C++ for all of them is not feasible. The compiler keeps generated output correct and consistent. Generated files are excluded from version control.
 
@@ -41,6 +45,7 @@ The OMS standard defines the CAL as a transport-agnostic pub/sub API that decoup
 | Jinja2 | (via uv) | Code generation templates |
 | CycloneDDS C library | 0.10.5 | DDS core |
 | CycloneDDS-CXX binding | 0.10.5 | C++ DDS API + `idlc` IDL compiler |
+| nlohmann_json | ≥ 3.12.0 | Bidirectional JSON Externalizer parser |
 
 > **Use clang-20 when available.** The generated CDR codec is large, and clang generally compiles it faster with lower peak memory use than GCC in this project.
 
@@ -70,7 +75,7 @@ cmake -S . -B build \
   -G Ninja
 ```
 
-vcpkg will automatically install `cyclonedds[idlc]` and `cyclonedds-cxx[idllib]` from the manifest before the build starts. No `CMAKE_PREFIX_PATH` is needed in this path.
+vcpkg will automatically install `cyclonedds[idlc]`, `cyclonedds-cxx[idllib]`, and `nlohmann-json` from the manifest before the build starts. No `CMAKE_PREFIX_PATH` is needed in this path.
 
 ### Runtime
 
@@ -220,6 +225,32 @@ uci::base::Externalizer* ext = loader->getExternalizer("CDR", "2.5.0", "2.5.0");
 
 No separate CDR plugin library is required.
 
+### Using the JSON externalizer
+
+The JSON externalizer is built as `arcal_externalizer_json` and is available through the same loader API. It can serialize a generated Accessor to JSON text and read that JSON back into an Accessor of the same type:
+
+```cpp
+#include "uci/base/ExternalizerLoader.h"
+#include "uci/type/ActionCommandMT.h"
+
+uci::base::ExternalizerLoader* loader = uci_getExternalizerLoader();
+uci::base::Externalizer* json = loader->getExternalizer("JSON", "2.5.0", "2.5.0");
+
+uci::type::ActionCommandMT msg;
+msg.getMessageHeader().getSchemaVersion().setValue("2.5.0");
+
+std::string text;
+json->write(msg, text);
+
+uci::type::ActionCommandMT parsed;
+json->read(text, parsed);
+
+loader->destroyExternalizer(json);
+uci_destroyExternalizerLoader(loader);
+```
+
+JSON `read()` supports `std::string`, `std::istream`, and UTF-8 `std::vector<uint8_t>` inputs. JSON `write()` supports string and stream outputs; binary vector output remains intentionally unsupported.
+
 ### DDS network configuration
 
 Cyclone DDS reads its runtime configuration from `CYCLONEDDS_URI`. For single-host testing on Linux, set it to the bundled loopback config:
@@ -281,7 +312,7 @@ arcal/
 │   └── install-cyclonedds.sh   # Builds CycloneDDS from source
 ├── externalizer/
 │   ├── cdr/                    # Built-in CDR codec and Externalizer implementation
-│   └── json/                   # JSON externalizer plugin
+│   └── json/                   # Bidirectional JSON Externalizer plugin
 ├── include/
 │   └── uci/
 │       ├── base/               # Hand-written abstract interfaces
@@ -294,7 +325,7 @@ arcal/
 ├── src/
 │   ├── UUID.cpp
 │   ├── dds/                    # Cyclone DDS transport implementation
-│   └── generated/              # Generated CDR handlers (gitignored)
+│   └── generated/              # Generated CDR and JSON handlers (gitignored)
 ├── test/
 │   ├── cert/                   # CERT compliance tests
 │   └── e2e/                    # E2E smoke tests (pub/sub against live DDS)

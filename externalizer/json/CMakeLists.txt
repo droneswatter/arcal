@@ -30,10 +30,11 @@ set_target_properties(arcal_externalizer_json PROPERTIES
 
 target_precompile_headers(arcal_externalizer_json PRIVATE
     JsonPrimitives.h
+    JsonParse.h
     JsonRegistry.h
     "${PROJECT_SOURCE_DIR}/include/uci/base/BoundedList.h"
     "${PROJECT_SOURCE_DIR}/include/uci/base/SimpleList.h"
 )
 
 target_compile_options(arcal_externalizer_json PRIVATE -g1 -pipe)
-target_link_libraries(arcal_externalizer_json PRIVATE arcal)
+target_link_libraries(arcal_externalizer_json PRIVATE arcal nlohmann_json::nlohmann_json)

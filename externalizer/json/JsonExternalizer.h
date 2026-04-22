@@ -20,8 +20,8 @@ public:
     void read(const std::vector<uint8_t>& vec, uci::base::Accessor& type) override;
 
     bool messageReadOnly()     const override { return false; }
-    bool messageWriteOnly()    const override { return true; }
-    bool supportsObjectRead()  const override { return false; }
+    bool messageWriteOnly()    const override { return false; }
+    bool supportsObjectRead()  const override { return true; }
     bool supportsObjectWrite() const override { return true; }
 
     std::string getCalApiVersion()  const override { return "2.5.0"; }

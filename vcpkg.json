@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "dependencies": [
     { "name": "cyclonedds", "features": ["idlc"] },
-    { "name": "cyclonedds-cxx", "features": ["idllib"] }
+    { "name": "cyclonedds-cxx", "features": ["idllib"] },
+    "nlohmann-json"
   ]
 }

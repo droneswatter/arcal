@@ -29,8 +29,8 @@ int main() {
     // Metadata checks.
     require(ext->getEncoding()      == "JSON",  "getEncoding() == JSON");
     require(ext->getVendor()        == "arcal", "getVendor() == arcal");
-    require(ext->messageWriteOnly() == true,    "messageWriteOnly()");
-    require(ext->supportsObjectRead()  == false, "supportsObjectRead() == false");
+    require(ext->messageWriteOnly() == false,   "messageWriteOnly() == false");
+    require(ext->supportsObjectRead()  == true, "supportsObjectRead() == true");
     require(ext->supportsObjectWrite() == true,  "supportsObjectWrite() == true");
 
     // Populate a message with a known sentinel value.

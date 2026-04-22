@@ -1,7 +1,7 @@
-// JSON externalizer — write-only constraint.
+// JSON externalizer — unsupported binary write path.
 //
-// Verifies that all read() overloads throw UCIException and that
-// write(vector) throws (binary path unsupported for JSON).
+// Verifies that JSON advertises read/write object support and that
+// write(vector) still throws (binary path unsupported for JSON).
 
 #include "uci/type/ActionCommandMT.h"
 #include "uci/base/ExternalizerLoader.h"
@@ -10,8 +10,6 @@
 #include <cassert>
 #include <functional>
 #include <iostream>
-#include <sstream>
-#include <string>
 #include <vector>
 
 static int failures = 0;
@@ -32,12 +30,23 @@ int main() {
 
     uci::type::ActionCommandMT msg;
     std::vector<uint8_t> vec;
-    std::string          str{"{}"};
-    std::istringstream   iss{str};
+    if (ext->messageReadOnly()) {
+        std::cerr << "FAIL: messageReadOnly() should be false\n";
+        ++failures;
+    }
+    if (ext->messageWriteOnly()) {
+        std::cerr << "FAIL: messageWriteOnly() should be false\n";
+        ++failures;
+    }
+    if (!ext->supportsObjectRead()) {
+        std::cerr << "FAIL: supportsObjectRead() should be true\n";
+        ++failures;
+    }
+    if (!ext->supportsObjectWrite()) {
+        std::cerr << "FAIL: supportsObjectWrite() should be true\n";
+        ++failures;
+    }
 
-    expect_throw("read(istream)",  [&]{ ext->read(iss, msg); });
-    expect_throw("read(string)",   [&]{ ext->read(str, msg); });
-    expect_throw("read(vector)",   [&]{ ext->read(vec, msg); });
     expect_throw("write(vector)",  [&]{ ext->write(msg, vec); });
 
     loader->destroyExternalizer(ext);

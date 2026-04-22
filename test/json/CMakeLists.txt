@@ -8,3 +8,5 @@ endfunction()
 
 add_json_test(write_fields)
 add_json_test(write_readonly)
+add_json_test(read_roundtrip)
+add_json_test(read_errors)
