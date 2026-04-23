@@ -28,3 +28,23 @@ set_target_properties(arlacal-server PROPERTIES
 )
 
 install(TARGETS arlacal-server RUNTIME DESTINATION bin)
+
+if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
+    add_executable(lacal_owp_smoke_test
+        test/owp_smoke_test.cpp
+    )
+
+    target_link_libraries(lacal_owp_smoke_test PRIVATE
+        Boost::headers
+        Threads::Threads
+    )
+
+    add_test(
+        NAME LACAL-owp-smoke
+        COMMAND lacal_owp_smoke_test $<TARGET_FILE:arlacal-server>)
+
+    set_tests_properties(LACAL-owp-smoke PROPERTIES
+        TIMEOUT 10
+        ENVIRONMENT
+            "CYCLONEDDS_URI=file://${PROJECT_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml")
+endif()

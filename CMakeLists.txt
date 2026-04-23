@@ -19,6 +19,13 @@ find_package(CycloneDDS   REQUIRED)
 find_package(CycloneDDS-CXX REQUIRED)
 find_package(nlohmann_json 3.12.0 REQUIRED)
 
+option(ARCAL_BUILD_TESTS     "Build CERT test suite"  ON)
+option(ARCAL_BUILD_E2E_TESTS "Build E2E smoke tests"  ON)
+
+if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
+    enable_testing()
+endif()
+
 # ---------------------------------------------------------------------------
 # IDL Compiler — arcal_payload.idl → C/C++ type support
 # ---------------------------------------------------------------------------
@@ -188,13 +195,6 @@ endif()
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-
-option(ARCAL_BUILD_TESTS     "Build CERT test suite"  ON)
-option(ARCAL_BUILD_E2E_TESTS "Build E2E smoke tests"  ON)
-
-if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
-    enable_testing()
-endif()
 
 if(ARCAL_BUILD_TESTS)
     add_subdirectory(test/conform)
