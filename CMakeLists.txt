@@ -176,6 +176,16 @@ endif()
 add_subdirectory(externalizer/json)
 
 # ---------------------------------------------------------------------------
+# Language-Agnostic CAL server
+# ---------------------------------------------------------------------------
+
+option(ARCAL_BUILD_LACAL "Build ARCAL Language-Agnostic CAL WebSocket server" ON)
+
+if(ARCAL_BUILD_LACAL)
+    add_subdirectory(lacal)
+endif()
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
