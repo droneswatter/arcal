@@ -15,8 +15,11 @@
 
 #include <algorithm>
 #include <atomic>
+#include <csignal>
 #include <cstdint>
 #include <cstring>
+#include <deque>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -122,20 +125,31 @@ struct StandardSub {
     std::string topic;
 };
 
-struct Client : std::enable_shared_from_this<Client> {
-    explicit Client(std::shared_ptr<websocket::stream<tcp::socket>> wsIn)
-        : ws(std::move(wsIn)) {}
+class Client;
+
+bool headerContainsToken(const std::string& value, const std::string& token);
+bool handleInit(Client& client, const std::string& rest, uint16_t port);
+void handleXSub(Client& client, const std::string& rest);
+void handleSub(Client& client, const std::string& rest);
+void handleUnsub(Client& client, const std::string& rest);
+void handleXUnsub(Client& client, const std::string& rest);
+
+class Client : public std::enable_shared_from_this<Client> {
+public:
+    Client(tcp::socket socket, uint16_t port)
+        : ws_(std::move(socket)), port_(port) {}
+
+    void start() {
+        readHttpRequest();
+    }
 
     bool sendLine(const std::string& line) {
-        std::lock_guard<std::mutex> lock(sendMutex);
         if (!open) return false;
-        boost::system::error_code ec;
-        ws->text(true);
-        ws->write(asio::buffer(line), ec);
-        if (ec) {
-            open = false;
-            return false;
-        }
+        asio::post(ws_.get_executor(), [self = shared_from_this(), line] {
+            const bool writeInProgress = !self->writeQueue_.empty();
+            self->writeQueue_.push_back(line);
+            if (!writeInProgress) self->writeNext();
+        });
         return true;
     }
 
@@ -155,17 +169,128 @@ struct Client : std::enable_shared_from_this<Client> {
         return true;
     }
 
-    std::shared_ptr<websocket::stream<tcp::socket>> ws;
     std::atomic<bool> open{true};
     bool initialized = false;
     bool verbose = true;
     std::string serviceId;
-    std::mutex sendMutex;
     std::mutex stateMutex;
     std::vector<XSub> xsubs;
     std::unordered_map<std::string, StandardSub> standardSubs;
     std::unordered_map<std::string, std::string> concreteSubs;
     uint64_t nextSubId = 1;
+
+private:
+    void readHttpRequest() {
+        auto self = shared_from_this();
+        http::async_read(ws_.next_layer(), httpBuffer_, request_,
+            [self](boost::system::error_code ec, std::size_t) {
+                if (ec) {
+                    self->open = false;
+                    return;
+                }
+                self->acceptWebSocket();
+            });
+    }
+
+    void acceptWebSocket() {
+        const auto protocolView = request_[http::field::sec_websocket_protocol];
+        const std::string protocol(protocolView.data(), protocolView.size());
+        if (!headerContainsToken(protocol, "owp")) {
+            auto res = std::make_shared<http::response<http::string_body>>(
+                http::status::bad_request, request_.version());
+            res->set(http::field::server, "arlacal-server");
+            res->set(http::field::connection, "close");
+            res->body() = "Sec-WebSocket-Protocol: owp required\n";
+            res->prepare_payload();
+            auto self = shared_from_this();
+            http::async_write(ws_.next_layer(), *res,
+                [self, res](boost::system::error_code, std::size_t) {
+                    self->open = false;
+                });
+            return;
+        }
+
+        ws_.set_option(websocket::stream_base::decorator(
+            [](websocket::response_type& res) {
+                res.set(http::field::server, "arlacal-server");
+                res.set(http::field::sec_websocket_protocol, "owp");
+            }));
+        ws_.text(true);
+        auto self = shared_from_this();
+        ws_.async_accept(request_, [self](boost::system::error_code ec) {
+            if (ec) {
+                self->open = false;
+                return;
+            }
+            self->readNext();
+        });
+    }
+
+    void readNext() {
+        readBuffer_.consume(readBuffer_.size());
+        auto self = shared_from_this();
+        ws_.async_read(readBuffer_, [self](boost::system::error_code ec, std::size_t) {
+            if (ec == websocket::error::closed) {
+                self->open = false;
+                return;
+            }
+            if (ec) {
+                std::cerr << "[arlacal] client read error: " << ec.message() << "\n";
+                self->open = false;
+                return;
+            }
+            if (self->ws_.got_text()) {
+                self->handleLine(beast::buffers_to_string(self->readBuffer_.data()));
+            }
+            if (self->open) self->readNext();
+        });
+    }
+
+    void handleLine(const std::string& payload) {
+        std::string rest;
+        auto op = firstField(payload, rest);
+        if (!op) return;
+
+        if (*op == "INIT") {
+            if (!handleInit(*this, rest, port_)) open = false;
+        } else if (!initialized) {
+            sendLine("-ERR Illegal-State INIT must be first operation");
+            open = false;
+        } else if (*op == "XSUB") {
+            handleXSub(*this, rest);
+        } else if (*op == "XUNSUB") {
+            handleXUnsub(*this, rest);
+        } else if (*op == "SUB") {
+            handleSub(*this, rest);
+        } else if (*op == "UNSUB") {
+            handleUnsub(*this, rest);
+        } else if (*op == "PUB") {
+            sendLine("-ERR Illegal-State operation not implemented in this arlacal-server build");
+        } else {
+            sendLine("-ERR Illegal-Argument unknown operation");
+        }
+    }
+
+    void writeNext() {
+        auto self = shared_from_this();
+        ws_.text(true);
+        ws_.async_write(asio::buffer(writeQueue_.front()),
+            [self](boost::system::error_code ec, std::size_t) {
+                if (ec) {
+                    self->open = false;
+                    return;
+                }
+                self->writeQueue_.pop_front();
+                if (!self->writeQueue_.empty()) self->writeNext();
+            });
+    }
+
+    websocket::stream<tcp::socket> ws_;
+    uint16_t port_;
+    beast::flat_buffer httpBuffer_;
+    beast::flat_buffer readBuffer_;
+    http::request<http::string_body> request_;
+    std::deque<std::string> writeQueue_;
 };
 
 class ClientRegistry {
@@ -457,33 +582,6 @@ bool headerContainsToken(const std::string& value, const std::string& token) {
     return false;
 }
 
-bool handshake(websocket::stream<tcp::socket>& ws) {
-    beast::flat_buffer buffer;
-    http::request<http::string_body> req;
-    http::read(ws.next_layer(), buffer, req);
-
-    const auto protocolView = req[http::field::sec_websocket_protocol];
-    const std::string protocol(protocolView.data(), protocolView.size());
-    if (!headerContainsToken(protocol, "owp")) {
-        http::response<http::string_body> res{http::status::bad_request, req.version()};
-        res.set(http::field::server, "arlacal-server");
-        res.set(http::field::connection, "close");
-        res.body() = "Sec-WebSocket-Protocol: owp required\n";
-        res.prepare_payload();
-        http::write(ws.next_layer(), res);
-        return false;
-    }
-
-    ws.set_option(websocket::stream_base::decorator(
-        [](websocket::response_type& res) {
-            res.set(http::field::server, "arlacal-server");
-            res.set(http::field::sec_websocket_protocol, "owp");
-        }));
-    ws.accept(req);
-    ws.text(true);
-    return true;
-}
-
 bool handleInit(Client& client, const std::string& rest, uint16_t port) {
     if (client.initialized) {
         client.sendLine("-ERR Illegal-State INIT already received");
@@ -601,53 +699,6 @@ void handleXUnsub(Client& client, const std::string& rest) {
     if (client.verbose) client.sendLine("+OK");
 }
 
-void clientLoop(std::shared_ptr<Client> client, uint16_t port) {
-    try {
-        if (!handshake(*client->ws)) {
-            client->open = false;
-            return;
-        }
-        while (client->open && g_running) {
-            beast::flat_buffer buffer;
-            boost::system::error_code ec;
-            client->ws->read(buffer, ec);
-            if (ec == websocket::error::closed) break;
-            if (ec) throw boost::system::system_error(ec);
-            if (!client->ws->got_text())
-                continue;
-
-            std::string rest;
-            auto payload = beast::buffers_to_string(buffer.data());
-            auto op = firstField(payload, rest);
-            if (!op) continue;
-
-            if (*op == "INIT") {
-                if (!handleInit(*client, rest, port)) break;
-            } else if (!client->initialized) {
-                client->sendLine("-ERR Illegal-State INIT must be first operation");
-                break;
-            } else if (*op == "XSUB") {
-                handleXSub(*client, rest);
-            } else if (*op == "XUNSUB") {
-                handleXUnsub(*client, rest);
-            } else if (*op == "SUB") {
-                handleSub(*client, rest);
-            } else if (*op == "UNSUB") {
-                handleUnsub(*client, rest);
-            } else if (*op == "PUB") {
-                client->sendLine("-ERR Illegal-State operation not implemented in this arlacal-server build");
-            } else {
-                client->sendLine("-ERR Illegal-Argument unknown operation");
-            }
-        }
-        boost::system::error_code ec;
-        client->ws->close(websocket::close_code::normal, ec);
-    } catch (const std::exception& e) {
-        std::cerr << "[arlacal] client error: " << e.what() << "\n";
-    }
-    client->open = false;
-}
-
 tcp::acceptor createAcceptor(asio::io_context& io, const Options& opts) {
     boost::system::error_code ec;
     auto address = asio::ip::make_address(opts.host, ec);
@@ -687,23 +738,34 @@ int main(int argc, char** argv) {
 
         asio::io_context io;
         auto acceptor = createAcceptor(io, opts);
+        asio::signal_set signals(io, SIGINT, SIGTERM);
         std::cout << "[arlacal] listening on ws://" << opts.host << ":" << opts.port
                   << " subprotocol=owp domain=" << opts.domain << "\n";
 
-        while (g_running) {
-            tcp::socket socket(io);
-            boost::system::error_code ec;
-            acceptor.accept(socket, ec);
-            if (ec) {
-                std::cerr << "[arlacal] accept failed: " << ec.message() << "\n";
-                continue;
-            }
-            auto ws = std::make_shared<websocket::stream<tcp::socket>>(std::move(socket));
-            auto client = std::make_shared<Client>(std::move(ws));
-            clients.add(client);
-            std::thread(clientLoop, client, opts.port).detach();
-        }
+        signals.async_wait([&](boost::system::error_code ec, int) {
+            if (ec) return;
+            g_running = false;
+            monitor.stop();
+            boost::system::error_code closeEc;
+            acceptor.close(closeEc);
+        });
 
+        std::function<void()> doAccept;
+        doAccept = [&] {
+            acceptor.async_accept([&](boost::system::error_code ec, tcp::socket socket) {
+                if (!ec) {
+                    auto client = std::make_shared<Client>(std::move(socket), opts.port);
+                    clients.add(client);
+                    client->start();
+                } else if (ec != asio::error::operation_aborted) {
+                    std::cerr << "[arlacal] accept failed: " << ec.message() << "\n";
+                }
+                if (g_running && acceptor.is_open()) doAccept();
+            });
+        };
+
+        doAccept();
+        io.run();
         monitor.stop();
     } catch (const std::exception& e) {
         std::cerr << "[arlacal] fatal: " << e.what() << "\n";

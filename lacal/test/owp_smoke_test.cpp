@@ -2,22 +2,19 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/websocket.hpp>
+#include <boost/process.hpp>
 
-#include <csignal>
 #include <cstdlib>
-#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <string>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <thread>
-#include <unistd.h>
 
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace websocket = beast::websocket;
+namespace process = boost::process;
 using tcp = asio::ip::tcp;
 
 namespace {
@@ -37,22 +34,13 @@ uint16_t reserveFreePort() {
 
 class ChildProcess {
 public:
-    ChildProcess(const std::string& exe, uint16_t port) {
-        const std::string portStr = std::to_string(port);
-        pid_ = ::fork();
-        if (pid_ < 0)
-            throw std::runtime_error(std::string("fork failed: ") + std::strerror(errno));
-
-        if (pid_ == 0) {
-            ::execl(exe.c_str(), exe.c_str(),
-                    "--host", "127.0.0.1",
-                    "--port", portStr.c_str(),
-                    "--domain", "0",
-                    static_cast<char*>(nullptr));
-            std::cerr << "exec failed: " << std::strerror(errno) << "\n";
-            std::_Exit(127);
-        }
-    }
+    ChildProcess(const std::string& exe, uint16_t port)
+        : child_(exe,
+                 "--host", "127.0.0.1",
+                 "--port", std::to_string(port),
+                 "--domain", "0",
+                 process::std_out > process::null,
+                 process::std_err > process::null) {}
 
     ~ChildProcess() {
         stop();
@@ -62,25 +50,14 @@ public:
     ChildProcess& operator=(const ChildProcess&) = delete;
 
     void stop() {
-        if (pid_ <= 0) return;
-        int status = 0;
-        if (::waitpid(pid_, &status, WNOHANG) == 0) {
-            ::kill(pid_, SIGTERM);
-            for (int i = 0; i < 20; ++i) {
-                if (::waitpid(pid_, &status, WNOHANG) == pid_) {
-                    pid_ = -1;
-                    return;
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            }
-            ::kill(pid_, SIGKILL);
-            ::waitpid(pid_, &status, 0);
+        if (child_.valid() && child_.running()) {
+            child_.terminate();
+            child_.wait();
         }
-        pid_ = -1;
     }
 
 private:
-    pid_t pid_ = -1;
+    process::child child_;
 };
 
 tcp::socket connectWithRetry(asio::io_context& io, uint16_t port) {
