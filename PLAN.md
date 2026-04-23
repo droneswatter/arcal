@@ -1,112 +1,132 @@
 # arcal Roadmap
 
-Items are roughly priority-ordered within each section. "Done" items are kept for reference.
+This roadmap tracks work that belongs in the `arcal` implementation repo. The
+portable conformance-suite roadmap lives in `test/arcal-cert/PLAN.md`, and the
+standalone browser monitor roadmap belongs in `../arcal-busmon`.
 
----
+## Done
 
-## Externalizers
+- CDR externalizer read/write support.
+- Bidirectional JSON externalizer read/write support.
+- Generated JSON serializers and deserializers.
+- CERT/E2E conformance suite wired through `test/arcal-cert`.
+- LA-CAL server target: `arlacal-server`.
+- OWP smoke coverage for LA-CAL startup, `INIT`, `SUB`, `UNSUB`, `XSUB`, and
+  `XUNSUB`.
+- Bus monitor architecture moved out of `arcal`: `arcal-busmon` now consumes
+  LA-CAL WebSocket/OWP JSON instead of linking against private DDS internals.
 
-| Status | Item | Notes |
-|--------|------|-------|
-| Done   | CDR externalizer (read + write) | `libarcal_externalizer_cdr.so` |
-| Done   | JSON externalizer — write | `libarcal_externalizer_json.so`; schema-compiler-generated handlers; no external deps |
-| Later  | JSON externalizer — read | Needs a JSON parser (nlohmann/json or simdjson); schema compiler generates deserializers |
-| Later  | XML externalizer (read + write) | Needs an XML lib (pugixml recommended — header-only, fast); matches OMS wire format for external tools |
+## P0: LA-CAL Hardening
 
----
+Make `arlacal-server` reliable enough to be the default bridge for tools.
 
-## arcal-busmon
+- Split the large `lacal/src/main.cpp` into protocol, WebSocket session, topic
+  monitor, and server modules.
+- Add focused unit tests for OWP parsing and error responses.
+- Add tests for `XSUBINFO` behavior and standard `MSG` traffic after wildcard
+  subscription setup.
+- Add tests for malformed `INIT`, duplicate subscription IDs, and unsupported
+  operations.
+- Document the supported OWP subset and ARCAL extensions.
+- Decide whether topic/message discovery is strictly default-topic based or
+  whether DDS-discovered topics can introduce non-default names.
 
-A standalone tool that subscribes to all topics on the bus and renders/records messages.
+Verification:
 
-### Tier 1 — File Logger (MVP)
+```bash
+cmake --build build --target arlacal-server lacal_owp_smoke_test
+ctest --test-dir build -R "^LACAL-" --output-on-failure
+```
 
-- Subscribe to every discovered topic
-- Decode each message via the type tag (FNV-1a hash → type name → JSON externalizer)
-- Write one file per message: `<log-dir>/<topic>/<seq>.json`
-- Print discovered topics and running message counts to stdout
-- CLI: `arcal-busmon --log-dir ./busmon-out [--domain 0]`
+## P0: Conformance Traceability
 
-### Tier 2 — TUI (ncurses / ftxui)
+Use `arcal-cert` as the portable requirements surface and keep the embedded
+submodule current.
 
-- Live topic list with message counts and rates
-- Select a topic to see the latest message body (pretty-printed JSON)
-- Filter topics by name glob or XPath-like expression on message fields
-- Pause / resume recording
+- Add `CONFORMANCE.md` in `arcal-cert`.
+- Add CTest labels in `arcal-cert` and verify they appear in the parent build.
+- Update `test/arcal-cert` whenever the standalone `arcal-cert` repo advances.
+- Keep implementation-specific tests in `arcal/test/*`, not in `arcal-cert`.
 
-### Tier 3 — HTTP Server
+Verification:
 
-- REST API: `GET /topics`, `GET /topics/{name}/messages?limit=N`
-- WebSocket feed for live message stream
-- Web UI: topic browser, message viewer, field-level filtering, save/download
-- Authentication (token-based)
+```bash
+ctest --test-dir build -N
+ctest --test-dir build -R "^(CERT|E2E)-" --output-on-failure
+```
 
----
+## P1: Installation And Packaging
 
-## arcal-replay
+Make downstream use boring.
 
-Replay a log directory (produced by arcal-busmon Tier 1) back onto the bus.
+- Add CMake `install()` rules for public headers, libraries, and tools.
+- Export an `arcalConfig.cmake` package.
+- Install externalizer plugins and document runtime search paths.
+- Add a `pkg-config` file (`arcal.pc`) for non-CMake consumers.
+- Consider a static-library build option (`BUILD_SHARED_LIBS=OFF`) for embedded
+  targets.
+- Keep the `vcpkg.json` manifest current and consider a first-party vcpkg port.
 
-- Reconstruct message timing from file timestamps or an embedded timestamp field
-- CLI: `arcal-replay --log-dir ./busmon-out [--speed 1.0] [--domain 0]`
-- Requires JSON read externalizer
+Verification:
 
----
+```bash
+cmake --install build --prefix /tmp/arcal-install
+```
 
-## Mock ASB
+## P1: arcal-replay
 
-An in-process `AbstractServiceBusConnection` that routes messages via `std::deque` instead of DDS.
+Replay JSON logs produced by LA-CAL-aware tools back onto the CAL bus.
 
-- Enables unit tests without a running DDS daemon or network config
-- Readers and writers created on the same mock ASB exchange messages synchronously
-- Useful for CERT tests that currently require `cyclonedds_localhost.xml`
+- Read per-topic JSON logs.
+- Reconstruct message timing from file timestamps or embedded timestamp fields.
+- Deserialize JSON into generated Accessors with the JSON externalizer.
+- Publish through public CAL writers.
+- CLI: `arcal-replay --log-dir ./busmon-out [--speed 1.0] [--domain 0]`.
 
----
+## P1: arcal-schema
 
-## Installation and Packaging
+Provide schema introspection without a live bus.
 
-- CMake `install()` rules for headers, `.so` files, and a `arcalConfig.cmake` find-package file
-- vcpkg port (`ports/arcal/`) so downstream projects can depend on arcal via vcpkg
-- `pkg-config` file (`arcal.pc`) for non-CMake consumers
-- Consider a static-library build option (`BUILD_SHARED_LIBS=OFF`) for embedded targets
+- `arcal-schema list` — list registered UCI type names.
+- `arcal-schema show <TypeName>` — dump field structure, optionality, list
+  bounds, and choice variants.
+- `arcal-schema validate <file.json> <TypeName>` — validate JSON against a
+  generated Accessor using JSON read support.
+- Reuse the generated registries rather than introducing a parallel schema
+  model.
 
----
+## P2: Mock ASB
 
-## Schema Reduction (arcal-subset)
+Add an in-process `AbstractServiceBusConnection` for tests that do not need DDS.
 
-The full UCI schema produces 5,614 CDR handlers and a matching set of JSON handlers — most programs use a small fraction of these types. A schema-reduction option lets integrators ship a purpose-built CAL library that is smaller, faster to compile, and uses less runtime memory.
+- Route messages via in-memory queues.
+- Let readers and writers on the same mock ASB exchange messages synchronously.
+- Keep behavior close enough to DDS-backed CAL for CERT-style tests.
+- Use it to reduce reliance on `cyclonedds_localhost.xml` where transport
+  behavior is not under test.
 
-- Pass the schema compiler a message list (`--messages ActionCommandMT,ActionStatusMT,...`) and a library suffix (`--subset-name mission-planner`)
-- Compiler walks the type dependency graph for each listed message type and emits only the required handlers
-- Output: `libarcal_cdr_mission-planner.so` / `libarcal_json_mission-planner.so` built from the reduced handler set
-- The ExternalizerLoader soname map in arcal core stays unchanged; the subset library is a drop-in replacement
-- Useful for embedded/constrained targets and for shortening CI build times during development
+## P2: Schema Reduction
 
----
+Allow integrators to build a smaller CAL for a selected message set.
 
-## Schema Tool (arcal-schema)
+- Pass the schema compiler a message list and subset name.
+- Walk the type dependency graph for each listed global message type.
+- Emit only required Accessors and externalizer handlers.
+- Produce subset libraries with predictable suffixes.
+- Keep subset externalizer libraries drop-in compatible with the existing loader
+  model.
 
-A CLI that introspects the arcal type registry without a live bus.
+## P2: Python Bindings
 
-- `arcal-schema list` — list all registered UCI type names
-- `arcal-schema show <TypeName>` — dump field structure (names, types, optionality, list bounds)
-- `arcal-schema validate <file.json> <TypeName>` — validate a JSON file against the type (requires JSON read)
-- Useful for integration testing and documentation generation
+Expose the public CAL API for scripting and test fixtures.
 
----
+- Wrap `AbstractServiceBusConnection`, typed readers/writers, and externalizers.
+- Keep bindings behind `ARCAL_BUILD_PYTHON`, default `OFF`.
+- Prefer public APIs over private DDS implementation hooks.
 
-## Python Bindings
+## P2: Multi-Domain / Partitioned DDS
 
-pybind11 wrapper around arcal for scripting, REPL-based debugging, and CI test authoring.
-
-- Expose `AbstractServiceBusConnection`, typed `Reader`/`Writer`, and externalizers
-- Enable Python-based bus monitor scripts and test fixtures
-- Separate CMake option (`ARCAL_BUILD_PYTHON`, default OFF)
-
----
-
-## Multi-Domain / Partitioned DDS
-
-- Currently hardcoded to DDS domain 0
-- Add `domain` parameter to `DdsAbstractServiceBusConnection` constructor
-- Support DDS partitions for topic-level access control (OMS Tier 3 isolation)
+- Keep domain selection configurable for tools and tests.
+- Add public API or configuration support if the CAL specification requires it.
+- Explore DDS partitions for topic-level access control and OMS isolation
+  profiles.
