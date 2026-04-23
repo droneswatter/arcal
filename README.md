@@ -132,6 +132,7 @@ bash scripts/build.sh
 |-------------|---------|-------------|
 | `ARCAL_BUILD_TESTS` | `ON` | Build the CERT test suite |
 | `ARCAL_BUILD_E2E_TESTS` | `ON` | Build the E2E smoke tests |
+| `ARCAL_BUILD_LACAL` | `ON` | Build `arlacal-server`, the WebSocket/OWP language-agnostic CAL bridge |
 | `ARCAL_UNITY_BATCH_SIZE` | `25` | Source files per unity build batch; increase to reduce compile time at the cost of higher peak memory |
 
 Example:
@@ -251,6 +252,48 @@ uci_destroyExternalizerLoader(loader);
 
 JSON `read()` supports `std::string`, `std::istream`, and UTF-8 `std::vector<uint8_t>` inputs. JSON `write()` supports string and stream outputs; binary vector output remains intentionally unsupported.
 
+### Using `arlacal-server`
+
+`arlacal-server` is ARCAL's language-agnostic CAL bridge. It listens to DDS
+topics through the normal ARCAL reader path, decodes opaque CDR payloads into
+generated Accessors, externalizes them to JSON, and publishes them over a
+WebSocket using OMS Web Protocol (OWP).
+
+Build just the bridge:
+
+```bash
+cmake --build build --target arlacal-server
+```
+
+Launch it:
+
+```bash
+export CYCLONEDDS_URI="file://$(pwd)/test/e2e/cyclonedds_localhost.xml"
+./build/lacal/arlacal-server --host 127.0.0.1 --port 8766 --domain 0
+```
+
+Command-line options:
+
+- `--host ADDR` — bind address, default `127.0.0.1`
+  - `127.0.0.1` accepts only local connections
+  - `0.0.0.0` accepts connections on all local interfaces
+  - a specific assigned IP accepts connections only on that interface
+- `--port PORT` — WebSocket port, default `8766`
+- `--domain ID` — Cyclone DDS domain, default `0`
+
+If you want another machine, container, VM, or WSL/Windows peer to connect,
+`127.0.0.1` is usually the wrong choice.
+
+On startup the server logs the listening URL and discovered DDS topics:
+
+```text
+[arlacal] listening on ws://127.0.0.1:8766 subprotocol=owp domain=0
+[arlacal] discovered topic=ActionCommand
+```
+
+For protocol details, ARCAL-specific OWP extensions, and fuller launch notes,
+see [lacal/README.md](lacal/README.md).
+
 ### DDS network configuration
 
 Cyclone DDS reads its runtime configuration from `CYCLONEDDS_URI`. For single-host testing on Linux, set it to the bundled loopback config:
@@ -317,6 +360,7 @@ arcal/
 │   └── uci/
 │       ├── base/               # Hand-written abstract interfaces
 │       └── type/               # Generated Accessor classes (gitignored)
+├── lacal/                      # `arlacal-server` WebSocket/OWP bridge
 ├── schema/                     # Git submodule → UCI XSD files
 ├── scripts/
 │   ├── build.sh

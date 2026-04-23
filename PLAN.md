@@ -23,6 +23,14 @@ Make `arlacal-server` reliable enough to be the default bridge for tools.
 - Split the large `lacal/src/main.cpp` into protocol, WebSocket session, topic
   monitor, and server modules.
 - Add focused unit tests for OWP parsing and error responses.
+- Add protocol/interop fixtures for the supported OWP subset:
+  - valid `INIT`
+  - malformed `INIT`
+  - valid `SUB` / `UNSUB`
+  - valid `XSUB` / `XUNSUB`
+  - duplicate subscription IDs
+  - malformed command lines
+  - disconnect during active session
 - Add tests for `XSUBINFO` behavior and standard `MSG` traffic after wildcard
   subscription setup.
 - Add tests for malformed `INIT`, duplicate subscription IDs, and unsupported
@@ -62,6 +70,11 @@ Make downstream use boring.
 - Add CMake `install()` rules for public headers, libraries, and tools.
 - Export an `arcalConfig.cmake` package.
 - Install externalizer plugins and document runtime search paths.
+- Package the tool surface coherently, not just the core library:
+  - `libarcal`
+  - externalizer plugins
+  - `arlacal-server`
+  - example runtime configuration/docs for launching the bridge
 - Add a `pkg-config` file (`arcal.pc`) for non-CMake consumers.
 - Consider a static-library build option (`BUILD_SHARED_LIBS=OFF`) for embedded
   targets.
