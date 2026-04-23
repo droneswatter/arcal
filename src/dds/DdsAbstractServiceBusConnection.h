@@ -62,6 +62,7 @@ private:
 
     std::thread                         monitorThread_;
     std::atomic<bool>                   running_{false};
+    std::atomic<bool>                   shutdownRequested_{false};
     std::condition_variable             monitorCv_;
     std::mutex                          monitorCvMutex_;
 };

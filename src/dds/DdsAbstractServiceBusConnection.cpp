@@ -38,6 +38,7 @@ DdsAbstractServiceBusConnection::~DdsAbstractServiceBusConnection() {
 }
 
 void DdsAbstractServiceBusConnection::shutdown() {
+    if (shutdownRequested_.exchange(true)) return;
     transitionState(StateEnum::FAILED, "Shutdown requested");
     {
         std::lock_guard<std::mutex> lk(monitorCvMutex_);
