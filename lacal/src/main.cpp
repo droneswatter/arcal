@@ -7,22 +7,18 @@
 #include <dds/dds.h>
 #include <nlohmann/json.hpp>
 
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <boost/asio.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/websocket.hpp>
+#include <boost/system/error_code.hpp>
 
 #include <algorithm>
-#include <array>
 #include <atomic>
-#include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -36,139 +32,20 @@
 
 namespace {
 
+namespace asio = boost::asio;
+namespace beast = boost::beast;
+namespace http = beast::http;
+namespace websocket = beast::websocket;
+using tcp = asio::ip::tcp;
+
 constexpr const char* kArcalTypeName = "arcal_dds::OpaquePayload";
-constexpr const char* kWebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 std::atomic<bool> g_running{true};
-
-uint32_t rol(uint32_t value, unsigned bits) {
-    return (value << bits) | (value >> (32 - bits));
-}
-
-std::array<uint8_t, 20> sha1(const std::string& input) {
-    uint64_t bitLen = static_cast<uint64_t>(input.size()) * 8;
-    std::vector<uint8_t> data(input.begin(), input.end());
-    data.push_back(0x80);
-    while ((data.size() % 64) != 56) data.push_back(0);
-    for (int i = 7; i >= 0; --i)
-        data.push_back(static_cast<uint8_t>((bitLen >> (i * 8)) & 0xff));
-
-    uint32_t h0 = 0x67452301;
-    uint32_t h1 = 0xefcdab89;
-    uint32_t h2 = 0x98badcfe;
-    uint32_t h3 = 0x10325476;
-    uint32_t h4 = 0xc3d2e1f0;
-
-    for (std::size_t chunk = 0; chunk < data.size(); chunk += 64) {
-        uint32_t w[80] = {};
-        for (int i = 0; i < 16; ++i) {
-            const std::size_t j = chunk + static_cast<std::size_t>(i) * 4;
-            w[i] = (uint32_t(data[j]) << 24) | (uint32_t(data[j + 1]) << 16) |
-                   (uint32_t(data[j + 2]) << 8) | uint32_t(data[j + 3]);
-        }
-        for (int i = 16; i < 80; ++i)
-            w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-
-        uint32_t a = h0, b = h1, c = h2, d = h3, e = h4;
-        for (int i = 0; i < 80; ++i) {
-            uint32_t f = 0;
-            uint32_t k = 0;
-            if (i < 20) {
-                f = (b & c) | ((~b) & d);
-                k = 0x5a827999;
-            } else if (i < 40) {
-                f = b ^ c ^ d;
-                k = 0x6ed9eba1;
-            } else if (i < 60) {
-                f = (b & c) | (b & d) | (c & d);
-                k = 0x8f1bbcdc;
-            } else {
-                f = b ^ c ^ d;
-                k = 0xca62c1d6;
-            }
-            uint32_t temp = rol(a, 5) + f + e + k + w[i];
-            e = d;
-            d = c;
-            c = rol(b, 30);
-            b = a;
-            a = temp;
-        }
-        h0 += a; h1 += b; h2 += c; h3 += d; h4 += e;
-    }
-
-    std::array<uint8_t, 20> out{};
-    const uint32_t h[5] = {h0, h1, h2, h3, h4};
-    for (int i = 0; i < 5; ++i) {
-        out[static_cast<std::size_t>(i) * 4] = static_cast<uint8_t>((h[i] >> 24) & 0xff);
-        out[static_cast<std::size_t>(i) * 4 + 1] = static_cast<uint8_t>((h[i] >> 16) & 0xff);
-        out[static_cast<std::size_t>(i) * 4 + 2] = static_cast<uint8_t>((h[i] >> 8) & 0xff);
-        out[static_cast<std::size_t>(i) * 4 + 3] = static_cast<uint8_t>(h[i] & 0xff);
-    }
-    return out;
-}
-
-std::string base64(const uint8_t* data, std::size_t len) {
-    static constexpr char table[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    for (std::size_t i = 0; i < len; i += 3) {
-        uint32_t v = uint32_t(data[i]) << 16;
-        if (i + 1 < len) v |= uint32_t(data[i + 1]) << 8;
-        if (i + 2 < len) v |= uint32_t(data[i + 2]);
-        out.push_back(table[(v >> 18) & 0x3f]);
-        out.push_back(table[(v >> 12) & 0x3f]);
-        out.push_back(i + 1 < len ? table[(v >> 6) & 0x3f] : '=');
-        out.push_back(i + 2 < len ? table[v & 0x3f] : '=');
-    }
-    return out;
-}
-
-std::string websocketAccept(const std::string& key) {
-    auto digest = sha1(key + kWebSocketGuid);
-    return base64(digest.data(), digest.size());
-}
-
-bool sendAll(int fd, const uint8_t* data, std::size_t len) {
-    while (len > 0) {
-        ssize_t n = ::send(fd, data, len, MSG_NOSIGNAL);
-        if (n < 0) {
-            if (errno == EINTR) continue;
-            return false;
-        }
-        data += n;
-        len -= static_cast<std::size_t>(n);
-    }
-    return true;
-}
-
-bool sendAll(int fd, const std::string& data) {
-    return sendAll(fd, reinterpret_cast<const uint8_t*>(data.data()), data.size());
-}
-
-bool recvExact(int fd, uint8_t* data, std::size_t len) {
-    while (len > 0) {
-        ssize_t n = ::recv(fd, data, len, 0);
-        if (n == 0) return false;
-        if (n < 0) {
-            if (errno == EINTR) continue;
-            return false;
-        }
-        data += n;
-        len -= static_cast<std::size_t>(n);
-    }
-    return true;
-}
 
 std::string trim(std::string s) {
     auto isWs = [](unsigned char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
     while (!s.empty() && isWs(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
     while (!s.empty() && isWs(static_cast<unsigned char>(s.back()))) s.pop_back();
-    return s;
-}
-
-std::string lower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return s;
 }
 
@@ -196,66 +73,6 @@ bool globMatch(const std::string& pattern, const std::string& text) {
     }
     while (p < pattern.size() && pattern[p] == '*') ++p;
     return p == pattern.size();
-}
-
-struct WebSocketFrame {
-    uint8_t opcode = 0;
-    std::string payload;
-};
-
-bool readFrame(int fd, WebSocketFrame& frame) {
-    uint8_t header[2] = {};
-    if (!recvExact(fd, header, 2)) return false;
-    frame.opcode = header[0] & 0x0f;
-    bool masked = (header[1] & 0x80) != 0;
-    uint64_t len = header[1] & 0x7f;
-    if (len == 126) {
-        uint8_t ext[2] = {};
-        if (!recvExact(fd, ext, 2)) return false;
-        len = (uint64_t(ext[0]) << 8) | uint64_t(ext[1]);
-    } else if (len == 127) {
-        uint8_t ext[8] = {};
-        if (!recvExact(fd, ext, 8)) return false;
-        len = 0;
-        for (uint8_t b : ext) len = (len << 8) | b;
-    }
-    if (len > 16 * 1024 * 1024) return false;
-    uint8_t mask[4] = {};
-    if (masked && !recvExact(fd, mask, 4)) return false;
-    frame.payload.assign(static_cast<std::size_t>(len), '\0');
-    if (len > 0 && !recvExact(fd, reinterpret_cast<uint8_t*>(&frame.payload[0]),
-                              static_cast<std::size_t>(len))) {
-        return false;
-    }
-    if (masked) {
-        for (std::size_t i = 0; i < frame.payload.size(); ++i)
-            frame.payload[i] = static_cast<char>(frame.payload[i] ^ mask[i % 4]);
-    }
-    return true;
-}
-
-bool sendTextFrame(int fd, const std::string& payload) {
-    std::vector<uint8_t> frame;
-    frame.push_back(0x81);
-    if (payload.size() < 126) {
-        frame.push_back(static_cast<uint8_t>(payload.size()));
-    } else if (payload.size() <= 0xffff) {
-        frame.push_back(126);
-        frame.push_back(static_cast<uint8_t>((payload.size() >> 8) & 0xff));
-        frame.push_back(static_cast<uint8_t>(payload.size() & 0xff));
-    } else {
-        frame.push_back(127);
-        uint64_t len = payload.size();
-        for (int i = 7; i >= 0; --i)
-            frame.push_back(static_cast<uint8_t>((len >> (i * 8)) & 0xff));
-    }
-    frame.insert(frame.end(), payload.begin(), payload.end());
-    return sendAll(fd, frame.data(), frame.size());
-}
-
-bool sendCloseFrame(int fd) {
-    const uint8_t frame[2] = {0x88, 0x00};
-    return sendAll(fd, frame, sizeof(frame));
 }
 
 std::optional<std::string> firstField(const std::string& line, std::string& rest) {
@@ -306,15 +123,16 @@ struct StandardSub {
 };
 
 struct Client : std::enable_shared_from_this<Client> {
-    explicit Client(int socketFd) : fd(socketFd) {}
-    ~Client() {
-        if (fd >= 0) ::close(fd);
-    }
+    explicit Client(std::shared_ptr<websocket::stream<tcp::socket>> wsIn)
+        : ws(std::move(wsIn)) {}
 
     bool sendLine(const std::string& line) {
         std::lock_guard<std::mutex> lock(sendMutex);
         if (!open) return false;
-        if (!sendTextFrame(fd, line)) {
+        boost::system::error_code ec;
+        ws->text(true);
+        ws->write(asio::buffer(line), ec);
+        if (ec) {
             open = false;
             return false;
         }
@@ -337,7 +155,7 @@ struct Client : std::enable_shared_from_this<Client> {
         return true;
     }
 
-    int fd = -1;
+    std::shared_ptr<websocket::stream<tcp::socket>> ws;
     std::atomic<bool> open{true};
     bool initialized = false;
     bool verbose = true;
@@ -630,30 +448,6 @@ Options parseArgs(int argc, char** argv) {
     return opts;
 }
 
-std::unordered_map<std::string, std::string> readHttpHeaders(int fd, std::string& requestLine) {
-    std::string request;
-    char ch = 0;
-    while (request.find("\r\n\r\n") == std::string::npos && request.size() < 64 * 1024) {
-        ssize_t n = ::recv(fd, &ch, 1, 0);
-        if (n <= 0) throw std::runtime_error("client disconnected during handshake");
-        request.push_back(ch);
-    }
-
-    std::istringstream in(request);
-    std::getline(in, requestLine);
-    requestLine = trim(requestLine);
-    std::unordered_map<std::string, std::string> headers;
-    std::string line;
-    while (std::getline(in, line)) {
-        line = trim(line);
-        if (line.empty()) break;
-        auto colon = line.find(':');
-        if (colon == std::string::npos) continue;
-        headers[lower(trim(line.substr(0, colon)))] = trim(line.substr(colon + 1));
-    }
-    return headers;
-}
-
 bool headerContainsToken(const std::string& value, const std::string& token) {
     std::istringstream in(value);
     std::string part;
@@ -663,27 +457,31 @@ bool headerContainsToken(const std::string& value, const std::string& token) {
     return false;
 }
 
-bool handshake(int fd) {
-    std::string requestLine;
-    auto headers = readHttpHeaders(fd, requestLine);
-    auto keyIt = headers.find("sec-websocket-key");
-    if (keyIt == headers.end()) return false;
+bool handshake(websocket::stream<tcp::socket>& ws) {
+    beast::flat_buffer buffer;
+    http::request<http::string_body> req;
+    http::read(ws.next_layer(), buffer, req);
 
-    auto protoIt = headers.find("sec-websocket-protocol");
-    if (protoIt == headers.end() || !headerContainsToken(protoIt->second, "owp")) {
-        const std::string bad = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
-        sendAll(fd, bad);
+    const auto protocolView = req[http::field::sec_websocket_protocol];
+    const std::string protocol(protocolView.data(), protocolView.size());
+    if (!headerContainsToken(protocol, "owp")) {
+        http::response<http::string_body> res{http::status::bad_request, req.version()};
+        res.set(http::field::server, "arlacal-server");
+        res.set(http::field::connection, "close");
+        res.body() = "Sec-WebSocket-Protocol: owp required\n";
+        res.prepare_payload();
+        http::write(ws.next_layer(), res);
         return false;
     }
 
-    std::ostringstream response;
-    response << "HTTP/1.1 101 Switching Protocols\r\n"
-             << "Upgrade: websocket\r\n"
-             << "Connection: Upgrade\r\n"
-             << "Sec-WebSocket-Accept: " << websocketAccept(keyIt->second) << "\r\n"
-             << "Sec-WebSocket-Protocol: owp\r\n"
-             << "\r\n";
-    return sendAll(fd, response.str());
+    ws.set_option(websocket::stream_base::decorator(
+        [](websocket::response_type& res) {
+            res.set(http::field::server, "arlacal-server");
+            res.set(http::field::sec_websocket_protocol, "owp");
+        }));
+    ws.accept(req);
+    ws.text(true);
+    return true;
 }
 
 bool handleInit(Client& client, const std::string& rest, uint16_t port) {
@@ -805,22 +603,22 @@ void handleXUnsub(Client& client, const std::string& rest) {
 
 void clientLoop(std::shared_ptr<Client> client, uint16_t port) {
     try {
-        if (!handshake(client->fd)) {
+        if (!handshake(*client->ws)) {
             client->open = false;
             return;
         }
         while (client->open && g_running) {
-            WebSocketFrame frame;
-            if (!readFrame(client->fd, frame)) break;
-            if (frame.opcode == 0x8) break;
-            if (frame.opcode == 0x9) continue; // ping ignored for now
-            if (frame.opcode != 0x1) {
-                client->sendLine("-ERR Illegal-Argument expected text frame");
+            beast::flat_buffer buffer;
+            boost::system::error_code ec;
+            client->ws->read(buffer, ec);
+            if (ec == websocket::error::closed) break;
+            if (ec) throw boost::system::system_error(ec);
+            if (!client->ws->got_text())
                 continue;
-            }
 
             std::string rest;
-            auto op = firstField(frame.payload, rest);
+            auto payload = beast::buffers_to_string(buffer.data());
+            auto op = firstField(payload, rest);
             if (!op) continue;
 
             if (*op == "INIT") {
@@ -842,35 +640,26 @@ void clientLoop(std::shared_ptr<Client> client, uint16_t port) {
                 client->sendLine("-ERR Illegal-Argument unknown operation");
             }
         }
-        sendCloseFrame(client->fd);
+        boost::system::error_code ec;
+        client->ws->close(websocket::close_code::normal, ec);
     } catch (const std::exception& e) {
         std::cerr << "[arlacal] client error: " << e.what() << "\n";
     }
     client->open = false;
 }
 
-int createListenSocket(const Options& opts) {
-    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) throw std::runtime_error("socket failed");
-    int yes = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+tcp::acceptor createAcceptor(asio::io_context& io, const Options& opts) {
+    boost::system::error_code ec;
+    auto address = asio::ip::make_address(opts.host, ec);
+    if (ec) throw std::runtime_error("invalid host address: " + ec.message());
 
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(opts.port);
-    if (::inet_pton(AF_INET, opts.host.c_str(), &addr.sin_addr) != 1) {
-        ::close(fd);
-        throw std::runtime_error("invalid IPv4 host address");
-    }
-    if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        ::close(fd);
-        throw std::runtime_error(std::string("bind failed: ") + std::strerror(errno));
-    }
-    if (::listen(fd, 16) < 0) {
-        ::close(fd);
-        throw std::runtime_error("listen failed");
-    }
-    return fd;
+    tcp::endpoint endpoint(address, opts.port);
+    tcp::acceptor acceptor(io);
+    acceptor.open(endpoint.protocol());
+    acceptor.set_option(asio::socket_base::reuse_address(true));
+    acceptor.bind(endpoint);
+    acceptor.listen(asio::socket_base::max_listen_connections);
+    return acceptor;
 }
 
 } // namespace
@@ -896,24 +685,25 @@ int main(int argc, char** argv) {
         TopicMonitor monitor(clients, jsonExt.get(), opts.domain);
         monitor.start();
 
-        int listenFd = createListenSocket(opts);
+        asio::io_context io;
+        auto acceptor = createAcceptor(io, opts);
         std::cout << "[arlacal] listening on ws://" << opts.host << ":" << opts.port
                   << " subprotocol=owp domain=" << opts.domain << "\n";
 
         while (g_running) {
-            sockaddr_in peer{};
-            socklen_t peerLen = sizeof(peer);
-            int fd = ::accept(listenFd, reinterpret_cast<sockaddr*>(&peer), &peerLen);
-            if (fd < 0) {
-                if (errno == EINTR) continue;
-                break;
+            tcp::socket socket(io);
+            boost::system::error_code ec;
+            acceptor.accept(socket, ec);
+            if (ec) {
+                std::cerr << "[arlacal] accept failed: " << ec.message() << "\n";
+                continue;
             }
-            auto client = std::make_shared<Client>(fd);
+            auto ws = std::make_shared<websocket::stream<tcp::socket>>(std::move(socket));
+            auto client = std::make_shared<Client>(std::move(ws));
             clients.add(client);
             std::thread(clientLoop, client, opts.port).detach();
         }
 
-        ::close(listenFd);
         monitor.stop();
     } catch (const std::exception& e) {
         std::cerr << "[arlacal] fatal: " << e.what() << "\n";

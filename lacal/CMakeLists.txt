@@ -1,4 +1,5 @@
 find_package(Threads REQUIRED)
+find_package(Boost REQUIRED)
 
 add_executable(arlacal-server
     src/main.cpp
@@ -15,6 +16,7 @@ target_include_directories(arlacal-server PRIVATE
 target_link_libraries(arlacal-server PRIVATE
     arcal
     arcal_externalizer_json
+    Boost::headers
     CycloneDDS::ddsc
     nlohmann_json::nlohmann_json
     Threads::Threads
