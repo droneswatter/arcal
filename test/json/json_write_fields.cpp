@@ -35,7 +35,7 @@ int main() {
 
     // Populate a message with a known sentinel value.
     static const std::string kSentinel{"arcal-json-sentinel"};
-    uci::type::ActionCommandMT msg;
+    auto& msg = uci::type::ActionCommandMT::create(nullptr);
     msg.getMessageHeader().getSchemaVersion().setValue(kSentinel);
 
     // Serialize to JSON string.
@@ -56,6 +56,7 @@ int main() {
 
     loader->destroyExternalizer(ext);
     uci_destroyExternalizerLoader(loader);
+    uci::type::ActionCommandMT::destroy(msg);
 
     std::cout << "PASS json_write_fields\n";
     std::cout << "JSON: " << json << "\n";

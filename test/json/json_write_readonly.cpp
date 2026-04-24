@@ -28,7 +28,7 @@ int main() {
     auto* loader = uci_getExternalizerLoader();
     auto* ext    = loader->getExternalizer("JSON", "2.5.0", "2.5.0");
 
-    uci::type::ActionCommandMT msg;
+    auto& msg = uci::type::ActionCommandMT::create(nullptr);
     std::vector<uint8_t> vec;
     if (ext->messageReadOnly()) {
         std::cerr << "FAIL: messageReadOnly() should be false\n";
@@ -51,6 +51,7 @@ int main() {
 
     loader->destroyExternalizer(ext);
     uci_destroyExternalizerLoader(loader);
+    uci::type::ActionCommandMT::destroy(msg);
 
     if (failures) {
         std::cerr << "FAIL json_write_readonly — " << failures << " failure(s)\n";

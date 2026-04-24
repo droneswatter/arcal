@@ -12,6 +12,7 @@ add_library(arcal_conform OBJECT
     conf_lifetime.cpp
     conf_externalizer.cpp
     conf_generated_global.cpp
+    conf_generated_lifecycle_target.cpp
     conf_lists.cpp
     conf_uuid.cpp
 )

@@ -1,10 +1,7 @@
-// Target conformance for generated accessor lifecycle.
+// Compile-only conformance for generated accessor lifecycle.
 //
-// This file documents the OMSC-SPC-008 RevK lifecycle surface that ARCAL's
-// generated accessors must satisfy after the interface/implementation split.
-// It is intentionally not wired into CMake yet because the current generator
-// still emits public value-object accessors. Wire this file into
-// test/conform/CMakeLists.txt with the generator change that makes it pass.
+// Documents the OMSC-SPC-008 RevK lifecycle surface that ARCAL's generated
+// accessors must satisfy after the interface/implementation split.
 
 #include "uci/base/AbstractServiceBusConnection.h"
 #include "uci/type/ActionCommandMT.h"

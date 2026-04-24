@@ -40,7 +40,9 @@ public:
         if constexpr (std::is_same_v<T, StorageT>) {
             data_.push_back(v);
         } else {
-            data_.push_back(static_cast<const StorageT&>(v));
+            StorageT item;
+            item.copy(v);
+            data_.push_back(std::move(item));
         }
     }
     template <typename U>

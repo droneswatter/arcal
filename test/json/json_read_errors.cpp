@@ -30,11 +30,11 @@ int main() {
     auto* loader = uci_getExternalizerLoader();
     auto* ext = loader->getExternalizer("JSON", "2.5.0", "2.5.0");
 
-    uci::type::HeaderType header;
-    uci::type::AccelerationChoiceType choice;
-    uci::type::AtomicValueType atomic;
-    uci::type::ObjectStateEnum state;
-    uci::type::UCI_SchemaVersionStringType schemaVersion;
+    auto& header = uci::type::HeaderType::create(nullptr);
+    auto& choice = uci::type::AccelerationChoiceType::create(nullptr);
+    auto& atomic = uci::type::AtomicValueType::create(nullptr);
+    auto& state = uci::type::ObjectStateEnum::create(nullptr);
+    auto& schemaVersion = uci::type::UCI_SchemaVersionStringType::create(nullptr);
 
     expect_throw("malformed JSON", [&] {
         ext->read("{", header);
@@ -57,6 +57,11 @@ int main() {
 
     loader->destroyExternalizer(ext);
     uci_destroyExternalizerLoader(loader);
+    uci::type::UCI_SchemaVersionStringType::destroy(schemaVersion);
+    uci::type::ObjectStateEnum::destroy(state);
+    uci::type::AtomicValueType::destroy(atomic);
+    uci::type::AccelerationChoiceType::destroy(choice);
+    uci::type::HeaderType::destroy(header);
 
     if (failures) {
         std::cerr << "FAIL json_read_errors — " << failures << " failure(s)\n";

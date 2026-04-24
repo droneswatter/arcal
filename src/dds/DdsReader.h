@@ -75,14 +75,18 @@ public:
 private:
     void dispatchOne(const DdsReaderCore::TaggedSample& s,
                      ListenerType* callListener) {
-        MsgType msg;
+        MsgType& msg = MsgType::create(nullptr);
         const uint32_t expected = arcal::cdrTypeTag(msg);
-        if (s.tag != expected) return; // wrong type on this topic; silently drop
+        if (s.tag != expected) {
+            MsgType::destroy(msg);
+            return; // wrong type on this topic; silently drop
+        }
         arcal::cdrDeserialize(s.tag, s.data, msg);
         if (callListener) callListener->handleMessage(msg);
         std::vector<ListenerType*> snap;
         { std::lock_guard<std::mutex> lk(mu_); snap = listeners_; }
         for (auto* l : snap) l->handleMessage(msg);
+        MsgType::destroy(msg);
     }
 
     void onBackgroundSamples(std::vector<DdsReaderCore::TaggedSample> samples) {

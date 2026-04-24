@@ -57,7 +57,7 @@ void exercise_spec_api_surface()
     reader.addListener(actionListener);
     (void)reader.readNoWait(1, actionListener);
 
-    uci::type::ActionCommandMT message;
+    auto& message = uci::type::ActionCommandMT::create(asb);
     writer.write(message);
 
     reader.removeListener(actionListener);
@@ -77,6 +77,8 @@ void exercise_spec_api_surface()
     externalizer->read(bytes, message);
     loader->destroyExternalizer(externalizer);
     uci_destroyExternalizerLoader(loader);
+
+    uci::type::ActionCommandMT::destroy(message);
 }
 
 } // namespace

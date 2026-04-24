@@ -4,7 +4,7 @@
 #include <iostream>
 
 int main() {
-    uci::type::ActionCommandMT message;
+    auto& message = uci::type::ActionCommandMT::create(nullptr);
     (void)message;
 
     auto* loader = uci_getExternalizerLoader();
@@ -22,6 +22,7 @@ int main() {
 
     loader->destroyExternalizer(externalizer);
     uci_destroyExternalizerLoader(loader);
+    uci::type::ActionCommandMT::destroy(message);
 
     std::cout << "PASS arcal install consumer smoke\n";
     return 0;
