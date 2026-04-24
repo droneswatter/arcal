@@ -4,9 +4,9 @@
 #include "UCIException.h"
 #include "accessorType.h"
 #include <cstddef>
+#include <iterator>
 #include <limits>
 #include <string>
-#include <vector>
 
 namespace uci {
 namespace base {
@@ -17,8 +17,51 @@ public:
     using size_type       = std::size_t;
     using reference       = T&;
     using const_reference = const T&;
-    using iterator        = typename std::vector<T>::iterator;
-    using const_iterator  = typename std::vector<T>::const_iterator;
+
+    class iterator {
+        friend class const_iterator;
+
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = T*;
+        using reference = T&;
+
+        iterator(BoundedList& list, size_type index) : list_(&list), index_(index) {}
+        reference operator*() const { return (*list_)[index_]; }
+        pointer operator->() const { return &(*list_)[index_]; }
+        iterator& operator++() { ++index_; return *this; }
+        iterator operator++(int) { auto copy = *this; ++(*this); return copy; }
+        bool operator==(const iterator& rhs) const { return list_ == rhs.list_ && index_ == rhs.index_; }
+        bool operator!=(const iterator& rhs) const { return !(*this == rhs); }
+
+    private:
+        BoundedList* list_;
+        size_type index_;
+    };
+
+    class const_iterator {
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const T*;
+        using reference = const T&;
+
+        const_iterator(const BoundedList& list, size_type index) : list_(&list), index_(index) {}
+        const_iterator(const iterator& it) : list_(it.list_), index_(it.index_) {}
+        reference operator*() const { return (*list_)[index_]; }
+        pointer operator->() const { return &(*list_)[index_]; }
+        const_iterator& operator++() { ++index_; return *this; }
+        const_iterator operator++(int) { auto copy = *this; ++(*this); return copy; }
+        bool operator==(const const_iterator& rhs) const { return list_ == rhs.list_ && index_ == rhs.index_; }
+        bool operator!=(const const_iterator& rhs) const { return !(*this == rhs); }
+
+    private:
+        const BoundedList* list_;
+        size_type index_;
+    };
 
     static constexpr size_type UNBOUNDED_BOUND = std::numeric_limits<size_type>::max();
 

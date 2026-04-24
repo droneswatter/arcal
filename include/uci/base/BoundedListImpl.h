@@ -4,6 +4,7 @@
 
 #include "UCIException.h"
 
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -15,7 +16,8 @@ namespace base {
 // MinOccurs/MaxOccurs are compile-time bounds forwarded to the base constructor.
 template <typename T, uci::base::accessorType::AccessorType V,
           std::size_t MinOccurs = 0,
-          std::size_t MaxOccurs = BoundedList<T, V>::UNBOUNDED_BOUND>
+          std::size_t MaxOccurs = BoundedList<T, V>::UNBOUNDED_BOUND,
+          typename StorageT = T>
 class BoundedListImpl : public BoundedList<T, V> {
 public:
     using typename BoundedList<T, V>::size_type;
@@ -46,7 +48,11 @@ public:
     void push_back(const T& v) override {
         if (data_.size() >= maxOccurs_)
             throwUciException("BoundedList::push_back exceeds maxOccurs=" << maxOccurs_);
-        data_.push_back(v);
+        if constexpr (std::is_same_v<T, StorageT>) {
+            data_.push_back(v);
+        } else {
+            data_.push_back(static_cast<const StorageT&>(v));
+        }
     }
     template <typename U>
     void push_back(U&& v) {
@@ -60,10 +66,10 @@ public:
     reference at(size_type i) override { return data_.at(i); }
     const_reference at(size_type i) const override { return data_.at(i); }
 
-    iterator begin() override { return data_.begin(); }
-    const_iterator begin() const override { return data_.begin(); }
-    iterator end() override { return data_.end(); }
-    const_iterator end() const override { return data_.end(); }
+    iterator begin() override { return iterator(*this, 0); }
+    const_iterator begin() const override { return const_iterator(*this, 0); }
+    iterator end() override { return iterator(*this, data_.size()); }
+    const_iterator end() const override { return const_iterator(*this, data_.size()); }
 
     size_type getMinimumOccurs() const noexcept override { return minOccurs_; }
     size_type getMaximumOccurs() const noexcept override { return maxOccurs_; }
@@ -73,7 +79,7 @@ public:
 private:
     size_type minOccurs_{MinOccurs};
     size_type maxOccurs_{MaxOccurs};
-    std::vector<T> data_;
+    std::vector<StorageT> data_;
 };
 
 } // namespace base
