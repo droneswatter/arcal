@@ -7,6 +7,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
@@ -166,6 +169,7 @@ PRIVATE
 set_target_properties(arcal PROPERTIES
     UNITY_BUILD ON
     UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
+    INSTALL_RPATH "$ORIGIN"
 )
 
 target_link_libraries(arcal PUBLIC CycloneDDS-CXX::ddscxx PRIVATE ${CMAKE_DL_LIBS})
@@ -217,8 +221,59 @@ endif()
 # ---------------------------------------------------------------------------
 
 install(TARGETS arcal arcal_externalizer_json
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
+    EXPORT arcalTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(
+    DIRECTORY externalizer/json/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcal/externalizer/json
+    FILES_MATCHING
+        PATTERN "*.h"
+)
+
+configure_package_config_file(
+    ${CMAKE_SOURCE_DIR}/cmake/arcalConfig.cmake.in
+    ${CMAKE_BINARY_DIR}/arcalConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/arcal
+)
+
+write_basic_package_version_file(
+    ${CMAKE_BINARY_DIR}/arcalConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(
+    EXPORT arcalTargets
+    FILE arcalTargets.cmake
+    NAMESPACE arcal::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/arcal
+)
+
+install(
+    FILES
+        ${CMAKE_BINARY_DIR}/arcalConfig.cmake
+        ${CMAKE_BINARY_DIR}/arcalConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/arcal
+)
+
+install(
+    FILES
+        ${CMAKE_SOURCE_DIR}/README.md
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal
+)
+
+install(
+    FILES ${CMAKE_SOURCE_DIR}/lacal/README.md
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal
+    RENAME README_ARLACAL.md
+)
+
+install(
+    FILES ${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal/examples
+)

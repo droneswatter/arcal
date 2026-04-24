@@ -75,7 +75,10 @@ cmake -S . -B build \
   -G Ninja
 ```
 
-vcpkg will automatically install `cyclonedds[idlc]`, `cyclonedds-cxx[idllib]`, and `nlohmann-json` from the manifest before the build starts. No `CMAKE_PREFIX_PATH` is needed in this path.
+vcpkg will automatically install `cyclonedds[idlc]`, `cyclonedds-cxx[idllib]`,
+`nlohmann-json`, and the Boost packages used by LA-CAL (`boost-beast` and
+`boost-process`) from the manifest before the build starts. No
+`CMAKE_PREFIX_PATH` is needed in this path.
 
 ### Runtime
 
@@ -147,6 +150,37 @@ bash scripts/clean-generated.sh
 ```
 
 This removes `include/uci/type/` and `src/generated/`. Re-run the schema compiler to regenerate.
+
+## Installing
+
+Install ARCAL into a prefix with:
+
+```bash
+cmake --install build --prefix /tmp/arcal-install
+```
+
+The install tree includes:
+
+- `lib/libarcal.so`
+- `lib/libarcal_externalizer_json.so`
+- `bin/arlacal-server` when `ARCAL_BUILD_LACAL=ON`
+- public headers under `include/`
+- JSON externalizer headers under `include/arcal/externalizer/json/`
+- CMake package files under `lib/cmake/arcal/`
+- reference docs under `share/arcal/`
+- the localhost Cyclone DDS config under `share/arcal/examples/`
+
+For non-standard prefixes, make sure the dynamic loader can see the installed
+shared libraries. `arlacal-server` is installed with an rpath that points at
+its sibling `../lib` directory; direct consumers of `libarcal.so` may still
+need `LD_LIBRARY_PATH` or an equivalent loader configuration.
+
+Downstream CMake projects can use the installed package with:
+
+```cmake
+find_package(arcal CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE arcal::arcal)
+```
 
 ## Configuration and use
 

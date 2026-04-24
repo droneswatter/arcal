@@ -2,6 +2,8 @@
   "name": "arcal",
   "version": "0.1.0",
   "dependencies": [
+    "boost-beast",
+    "boost-process",
     { "name": "cyclonedds", "features": ["idlc"] },
     { "name": "cyclonedds-cxx", "features": ["idllib"] },
     "nlohmann-json"

@@ -25,9 +25,11 @@ target_link_libraries(arlacal-server PRIVATE
 set_target_properties(arlacal-server PROPERTIES
     BUILD_RPATH
         "${CMAKE_BINARY_DIR};${CMAKE_BINARY_DIR}/externalizer/json"
+    INSTALL_RPATH
+        "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}"
 )
 
-install(TARGETS arlacal-server RUNTIME DESTINATION bin)
+install(TARGETS arlacal-server RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
     add_executable(lacal_owp_smoke_test

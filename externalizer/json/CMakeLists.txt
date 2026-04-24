@@ -15,8 +15,10 @@ add_library(arcal_externalizer_json SHARED
 )
 
 target_include_directories(arcal_externalizer_json PUBLIC
-    ${PROJECT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/arcal/externalizer/json>
 )
 
 set_target_properties(arcal_externalizer_json PROPERTIES
@@ -26,6 +28,7 @@ set_target_properties(arcal_externalizer_json PROPERTIES
     UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
+    INSTALL_RPATH "$ORIGIN"
 )
 
 target_precompile_headers(arcal_externalizer_json PRIVATE
