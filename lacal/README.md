@@ -24,6 +24,12 @@ The executable is written to:
 build/lacal/arlacal-server
 ```
 
+When ARCAL is installed, the executable is installed to:
+
+```text
+<prefix>/bin/arlacal-server
+```
+
 ## Launch
 
 For single-host development on Linux or WSL, use ARCAL's bundled loopback
@@ -32,6 +38,14 @@ Cyclone DDS configuration:
 ```bash
 export CYCLONEDDS_URI="file://$(pwd)/test/e2e/cyclonedds_localhost.xml"
 ./build/lacal/arlacal-server --host 127.0.0.1 --port 8766 --domain 0
+```
+
+From an installed ARCAL prefix:
+
+```bash
+export ARCAL_PREFIX=/tmp/arcal-install
+export CYCLONEDDS_URI="file://$ARCAL_PREFIX/share/arcal/examples/cyclonedds_localhost.xml"
+"$ARCAL_PREFIX/bin/arlacal-server" --host 127.0.0.1 --port 8766 --domain 0
 ```
 
 Command-line options:

@@ -153,6 +153,10 @@ This removes `include/uci/type/` and `src/generated/`. Re-run the schema compile
 
 ## Installing
 
+The normal downstream path is to build ARCAL once, install it to a prefix, and
+consume the exported CMake package from applications, tools, or integration
+tests.
+
 Install ARCAL into a prefix with:
 
 ```bash
@@ -180,6 +184,12 @@ Downstream CMake projects can use the installed package with:
 ```cmake
 find_package(arcal CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE arcal::arcal)
+```
+
+If the prefix is not in CMake's default search path, configure consumers with:
+
+```bash
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/tmp/arcal-install
 ```
 
 ## Configuration and use
@@ -304,6 +314,14 @@ Launch it:
 ```bash
 export CYCLONEDDS_URI="file://$(pwd)/test/e2e/cyclonedds_localhost.xml"
 ./build/lacal/arlacal-server --host 127.0.0.1 --port 8766 --domain 0
+```
+
+From an installed prefix:
+
+```bash
+export ARCAL_PREFIX=/tmp/arcal-install
+export CYCLONEDDS_URI="file://$ARCAL_PREFIX/share/arcal/examples/cyclonedds_localhost.xml"
+"$ARCAL_PREFIX/bin/arlacal-server" --host 127.0.0.1 --port 8766 --domain 0
 ```
 
 Command-line options:

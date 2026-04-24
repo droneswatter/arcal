@@ -15,6 +15,9 @@ standalone browser monitor roadmap belongs in `../arcal-busmon`.
   `XUNSUB`.
 - Bus monitor architecture moved out of `arcal`: `arcal-busmon` now consumes
   LA-CAL WebSocket/OWP JSON instead of linking against private DDS internals.
+- CMake install target for public headers, `libarcal`,
+  `libarcal_externalizer_json`, `arlacal-server`, CMake package files,
+  reference docs, and example Cyclone DDS config.
 
 ## P0: LA-CAL Hardening
 
@@ -63,27 +66,29 @@ ctest --test-dir build -N
 ctest --test-dir build -R "^(CERT|E2E)-" --output-on-failure
 ```
 
-## P1: Installation And Packaging
+## P1: Packaging Follow-Through
 
-Make downstream use boring.
+The basic CMake install path exists. Make it feel boring for downstream
+consumers and integration tools.
 
-- Add CMake `install()` rules for public headers, libraries, and tools.
-- Export an `arcalConfig.cmake` package.
-- Install externalizer plugins and document runtime search paths.
-- Package the tool surface coherently, not just the core library:
-  - `libarcal`
-  - externalizer plugins
-  - `arlacal-server`
-  - example runtime configuration/docs for launching the bridge
+- Add an install-tree smoke test that configures a tiny downstream CMake
+  project with `find_package(arcal CONFIG REQUIRED)`.
+- Add an installed `arlacal-server` smoke check that uses the installed
+  `share/arcal/examples/cyclonedds_localhost.xml`.
+- Decide whether externalizer plugins need a dedicated runtime search path or
+  registry convention beyond the current installed shared libraries.
 - Add a `pkg-config` file (`arcal.pc`) for non-CMake consumers.
 - Consider a static-library build option (`BUILD_SHARED_LIBS=OFF`) for embedded
   targets.
+- Consider a tarball/package preset once the install smoke tests are stable.
 - Keep the `vcpkg.json` manifest current and consider a first-party vcpkg port.
 
 Verification:
 
 ```bash
 cmake --install build --prefix /tmp/arcal-install
+cmake -S /tmp/arcal-consumer -B /tmp/arcal-consumer-build \
+  -DCMAKE_PREFIX_PATH=/tmp/arcal-install
 ```
 
 ## P1: arcal-replay
