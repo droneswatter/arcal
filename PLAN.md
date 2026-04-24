@@ -25,6 +25,23 @@ standalone browser monitor roadmap belongs in `../arcal-busmon`.
 - Install-tree smoke coverage for downstream `find_package(arcal CONFIG
   REQUIRED)` consumers and installed `arlacal-server`.
 
+
+## P0: CAL Config UUIDs
+
+Add to the CAL Config a list of Systems by Name and UUID.
+Each System has a UUID, Services and Subsystems.
+Each Subsystem has a UUID, Capabilities and Services.
+Each Service has a Name and UUID.
+The ASBC constructor accepts a Service Name. We need to decide:
+- One config file with all Systems, and the same Service on each has a unique name
+- One config file with all Systems, and env var picks the System, each Service can have the same name
+- One config file for each System
+
+## P1: Optional YAML Support for Config File
+
+Pick an open source C++ YAML lib and detect whether it is available.
+If so, detect .yml and .yaml extensions and parse them in yaml instead of json.
+
 ## P0: LA-CAL Hardening
 
 Make `arlacal-server` reliable enough to be the default bridge for tools.

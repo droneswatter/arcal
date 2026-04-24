@@ -392,9 +392,9 @@ public:
         return kName;
     }
     virtual void copy(const {{ type.cxx_name }}& rhs) = 0;
-    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb = nullptr);
+    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb);
     static {{ type.cxx_name }}& create(const {{ type.cxx_name }}& rhs,
-                                       uci::base::AbstractServiceBusConnection* asb = nullptr);
+                                       uci::base::AbstractServiceBusConnection* asb);
     static void destroy({{ type.cxx_name }}& accessor);
 {% if global_element %}\
 
@@ -660,9 +660,9 @@ public:
     }
 
     virtual void copy(const {{ type.cxx_name }}& rhs) = 0;
-    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb = nullptr);
+    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb);
     static {{ type.cxx_name }}& create(const {{ type.cxx_name }}& rhs,
-                                       uci::base::AbstractServiceBusConnection* asb = nullptr);
+                                       uci::base::AbstractServiceBusConnection* asb);
     static void destroy({{ type.cxx_name }}& accessor);
 
     virtual void setValue(EnumerationItem v) = 0;
@@ -797,9 +797,9 @@ public:
     }
 
     virtual void copy(const {{ type.cxx_name }}& rhs) = 0;
-    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb = nullptr);
+    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb);
     static {{ type.cxx_name }}& create(const {{ type.cxx_name }}& rhs,
-                                       uci::base::AbstractServiceBusConnection* asb = nullptr);
+                                       uci::base::AbstractServiceBusConnection* asb);
     static void destroy({{ type.cxx_name }}& accessor);
 
     virtual const {{ type.base_type }}& getValue() const = 0;
@@ -1484,8 +1484,8 @@ namespace uci { namespace type {
 }
 
 {{ cxx_type }}& {{ cxx_type }}::create(const {{ cxx_type }}& rhs,
-                                       uci::base::AbstractServiceBusConnection*) {
-    auto& result = create(nullptr);
+                                       uci::base::AbstractServiceBusConnection* asb) {
+    auto& result = create(asb);
     result.copy(rhs);
     return result;
 }
