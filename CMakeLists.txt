@@ -22,10 +22,11 @@ find_package(CycloneDDS   REQUIRED)
 find_package(CycloneDDS-CXX REQUIRED)
 find_package(nlohmann_json 3.12.0 REQUIRED)
 
-option(ARCAL_BUILD_TESTS     "Build CERT test suite"  ON)
-option(ARCAL_BUILD_E2E_TESTS "Build E2E smoke tests"  ON)
+option(ARCAL_BUILD_TESTS         "Build CERT test suite"  ON)
+option(ARCAL_BUILD_E2E_TESTS     "Build E2E smoke tests"  ON)
+option(ARCAL_BUILD_INSTALL_TESTS "Build install smoke tests" ON)
 
-if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
+if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS OR ARCAL_BUILD_INSTALL_TESTS)
     enable_testing()
 endif()
 
@@ -214,6 +215,10 @@ if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
         "CYCLONEDDS_URI=file://${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml"
         CACHE STRING "" FORCE)
     add_subdirectory(test/arcal-cert)
+endif()
+
+if(ARCAL_BUILD_INSTALL_TESTS)
+    add_subdirectory(test/install)
 endif()
 
 # ---------------------------------------------------------------------------

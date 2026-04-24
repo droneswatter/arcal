@@ -18,6 +18,8 @@ standalone browser monitor roadmap belongs in `../arcal-busmon`.
 - CMake install target for public headers, `libarcal`,
   `libarcal_externalizer_json`, `arlacal-server`, CMake package files,
   reference docs, and example Cyclone DDS config.
+- Install-tree smoke coverage for downstream `find_package(arcal CONFIG
+  REQUIRED)` consumers and installed `arlacal-server`.
 
 ## P0: LA-CAL Hardening
 
@@ -68,27 +70,22 @@ ctest --test-dir build -R "^(CERT|E2E)-" --output-on-failure
 
 ## P1: Packaging Follow-Through
 
-The basic CMake install path exists. Make it feel boring for downstream
-consumers and integration tools.
+The basic CMake install path and smoke coverage exist. Keep rounding out the
+packaging surface for non-CMake consumers and release artifacts.
 
-- Add an install-tree smoke test that configures a tiny downstream CMake
-  project with `find_package(arcal CONFIG REQUIRED)`.
-- Add an installed `arlacal-server` smoke check that uses the installed
-  `share/arcal/examples/cyclonedds_localhost.xml`.
 - Decide whether externalizer plugins need a dedicated runtime search path or
   registry convention beyond the current installed shared libraries.
 - Add a `pkg-config` file (`arcal.pc`) for non-CMake consumers.
 - Consider a static-library build option (`BUILD_SHARED_LIBS=OFF`) for embedded
   targets.
-- Consider a tarball/package preset once the install smoke tests are stable.
+- Consider a tarball/package preset.
 - Keep the `vcpkg.json` manifest current and consider a first-party vcpkg port.
 
 Verification:
 
 ```bash
 cmake --install build --prefix /tmp/arcal-install
-cmake -S /tmp/arcal-consumer -B /tmp/arcal-consumer-build \
-  -DCMAKE_PREFIX_PATH=/tmp/arcal-install
+ctest --test-dir build -R "^INSTALL-" --output-on-failure
 ```
 
 ## P1: arcal-replay

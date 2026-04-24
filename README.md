@@ -135,6 +135,7 @@ bash scripts/build.sh
 |-------------|---------|-------------|
 | `ARCAL_BUILD_TESTS` | `ON` | Build the CERT test suite |
 | `ARCAL_BUILD_E2E_TESTS` | `ON` | Build the E2E smoke tests |
+| `ARCAL_BUILD_INSTALL_TESTS` | `ON` | Register install-tree smoke tests |
 | `ARCAL_BUILD_LACAL` | `ON` | Build `arlacal-server`, the WebSocket/OWP language-agnostic CAL bridge |
 | `ARCAL_UNITY_BATCH_SIZE` | `25` | Source files per unity build batch; increase to reduce compile time at the cost of higher peak memory |
 
@@ -360,6 +361,12 @@ CTest sets `CYCLONEDDS_URI` automatically for the registered CERT and E2E tests.
 
 ```bash
 ctest --test-dir build --output-on-failure
+```
+
+Install-tree smoke tests can be run directly with:
+
+```bash
+ctest --test-dir build -R "^INSTALL-" --output-on-failure
 ```
 
 ### CERT tests included
