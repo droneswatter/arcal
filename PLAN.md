@@ -53,6 +53,32 @@ cmake --build build --target arlacal-server lacal_owp_smoke_test
 ctest --test-dir build -R "^LACAL-" --output-on-failure
 ```
 
+## P0: CxxCAL Generated Accessor Conformance
+
+Bring generated `uci::type::*` accessors into the OMSC-SPC-008 RevK lifecycle
+and factory model. This is non-negotiable for CAL interchangeability and for
+implementation-controlled memory management.
+
+- Treat public generated `uci::type::*` classes as CxxCAL accessor interfaces,
+  not application-constructible value objects.
+- Move data members into ARCAL-owned generated implementation classes.
+- Make generated accessor constructors, copy constructors, assignment
+  operators, and destructors protected.
+- Add generated `copy(const T&)`, `create(...)`, copy-create, and `destroy(...)`
+  for non-abstract complex accessors.
+- Parse and model XSD `abstract="true"` so abstract accessors do not expose
+  concrete factories.
+- Update CDR/JSON generation and ARCAL tests to use factories or implementation
+  classes instead of stack-constructed public accessors.
+- Track details in [CXX_CAL_SPEC_AUDIT.md](CXX_CAL_SPEC_AUDIT.md).
+
+Verification:
+
+```bash
+cmake --build build --target arcal_conformance
+ctest --test-dir build -R "^(CONFORM|JSON|CDR|E2E|CERT)-" --output-on-failure
+```
+
 ## P0: Conformance Traceability
 
 Use `arcal-cert` as the portable requirements surface and keep the embedded

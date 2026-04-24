@@ -130,6 +130,7 @@ class FieldModel:
         self.min_occurs = min_occurs
         self.max_occurs_val = max_occurs_val
         self.accessor_type = "uci::base::accessorType::ACCESSOR_TYPE_COMPLEX"  # resolved later
+        self.type_is_abstract = False
 
 
 class ChoiceModel:
@@ -139,7 +140,8 @@ class ChoiceModel:
 
 class TypeModel:
     def __init__(self, name, fields=None, choices=None, base_type=None,
-                 enum_values=None, is_string_restriction=False):
+                 enum_values=None, is_string_restriction=False,
+                 is_abstract=False):
         self.name = name
         self.cxx_name = xsd_name_to_cxx(name)
         self.fields = fields or []
@@ -148,6 +150,8 @@ class TypeModel:
         self.enum_values = enum_values
         self.is_enum = enum_values is not None
         self.is_string_restriction = is_string_restriction
+        self.is_abstract = is_abstract
+        self.derived_types: list[str] = []
 
 
 class GlobalElementModel:
@@ -179,6 +183,7 @@ class SchemaParser:
             self._parse_schema(root)
 
         self._resolve_accessor_types()
+        self._resolve_inheritance_metadata()
 
     def _get_accessor_type(self, type_name: str) -> str:
         if type_name in PRIMITIVE_ACCESSOR_TYPE_MAP:
@@ -198,6 +203,18 @@ class SchemaParser:
             for choice in type_model.choices:
                 for v in choice.variants:
                     v.accessor_type = self._get_accessor_type(v.type_name)
+
+    def _resolve_inheritance_metadata(self):
+        for type_model in self.types.values():
+            if type_model.base_type in self.types:
+                self.types[type_model.base_type].derived_types.append(type_model.name)
+
+        for type_model in self.types.values():
+            for field in type_model.fields:
+                field.type_is_abstract = self.types.get(field.type_name, TypeModel("")).is_abstract
+            for choice in type_model.choices:
+                for v in choice.variants:
+                    v.type_is_abstract = self.types.get(v.type_name, TypeModel("")).is_abstract
 
     def _parse_schema(self, root):
         ns = {"xs": XSD_NS}
@@ -249,7 +266,8 @@ class SchemaParser:
         for ch in ct.findall("xs:choice", ns):
             choices.append(self._parse_choice(ch, ns))
 
-        return TypeModel(name, fields=fields, choices=choices, base_type=base_type)
+        return TypeModel(name, fields=fields, choices=choices, base_type=base_type,
+                         is_abstract=ct.get("abstract") == "true")
 
     def _parse_sequence(self, seq, ns) -> list:
         fields = []
