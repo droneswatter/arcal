@@ -23,62 +23,46 @@ public:
     static constexpr size_type UNBOUNDED_BOUND = std::numeric_limits<size_type>::max();
 
     AccessorType getAccessorType() const noexcept override { return V; }
-    void reset() override { data_.clear(); }
     const std::string& typeName() const override {
         static const std::string name{"list"};
         return name;
     }
 
-    size_type size()     const noexcept { return data_.size(); }
-    bool      empty()    const noexcept { return data_.empty(); }
-    size_type capacity() const noexcept { return data_.capacity(); }
+    virtual size_type size() const noexcept = 0;
+    virtual bool empty() const noexcept = 0;
+    virtual size_type capacity() const noexcept = 0;
 
-    void reserve(size_type n) { data_.reserve(n); }
-    void resize(size_type n, uci::base::accessorType::AccessorType = V) {
-        if (n > maxOccurs_) throwUciException("BoundedList::resize exceeds maxOccurs=" << maxOccurs_);
-        data_.resize(n);
-    }
-    void pop_back() noexcept { data_.pop_back(); }
-    void clear()    noexcept { data_.clear(); }
+    virtual void reserve(size_type n) = 0;
+    virtual void resize(size_type n, uci::base::accessorType::AccessorType = V) = 0;
+    virtual void pop_back() noexcept = 0;
+    virtual void clear() noexcept = 0;
 
-    void push_back(const T& v) {
-        if (data_.size() >= maxOccurs_)
-            throwUciException("BoundedList::push_back exceeds maxOccurs=" << maxOccurs_);
-        data_.push_back(v);
-    }
+    virtual void push_back(const T& v) = 0;
     template <typename U>
     void push_back(U&& v) {
-        if (data_.size() >= maxOccurs_)
-            throwUciException("BoundedList::push_back exceeds maxOccurs=" << maxOccurs_);
-        data_.push_back(std::forward<U>(v));
+        push_back(static_cast<const T&>(v));
     }
 
-    reference       operator[](size_type i)       { return data_[i]; }
-    const_reference operator[](size_type i) const { return data_[i]; }
-    reference       at(size_type i)               { return data_.at(i); }
-    const_reference at(size_type i) const         { return data_.at(i); }
+    virtual reference operator[](size_type i) = 0;
+    virtual const_reference operator[](size_type i) const = 0;
+    virtual reference at(size_type i) = 0;
+    virtual const_reference at(size_type i) const = 0;
 
-    iterator       begin()       { return data_.begin(); }
-    const_iterator begin() const { return data_.begin(); }
-    iterator       end()         { return data_.end(); }
-    const_iterator end()   const { return data_.end(); }
+    virtual iterator begin() = 0;
+    virtual const_iterator begin() const = 0;
+    virtual iterator end() = 0;
+    virtual const_iterator end() const = 0;
 
-    size_type getMinimumOccurs() const noexcept { return minOccurs_; }
-    size_type getMaximumOccurs() const noexcept { return maxOccurs_; }
-    size_type max_size()         const noexcept { return maxOccurs_; }
-    size_type min_size()         const noexcept { return minOccurs_; }
+    virtual size_type getMinimumOccurs() const noexcept = 0;
+    virtual size_type getMaximumOccurs() const noexcept = 0;
+    virtual size_type max_size() const noexcept = 0;
+    virtual size_type min_size() const noexcept = 0;
 
 protected:
-    BoundedList(size_type minOccurs = 0, size_type maxOccurs = UNBOUNDED_BOUND)
-        : minOccurs_(minOccurs), maxOccurs_(maxOccurs) {}
+    BoundedList() = default;
     BoundedList(const BoundedList&) = default;
     BoundedList& operator=(const BoundedList&) = default;
     ~BoundedList() override = default;
-
-private:
-    size_type minOccurs_{0};
-    size_type maxOccurs_{UNBOUNDED_BOUND};
-    std::vector<T> data_;
 };
 
 } // namespace base

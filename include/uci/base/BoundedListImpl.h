@@ -2,6 +2,11 @@
 
 #include "BoundedList.h"
 
+#include "UCIException.h"
+
+#include <utility>
+#include <vector>
+
 namespace uci {
 namespace base {
 
@@ -13,10 +18,62 @@ template <typename T, uci::base::accessorType::AccessorType V,
           std::size_t MaxOccurs = BoundedList<T, V>::UNBOUNDED_BOUND>
 class BoundedListImpl : public BoundedList<T, V> {
 public:
-    BoundedListImpl() : BoundedList<T, V>(MinOccurs, MaxOccurs) {}
+    using typename BoundedList<T, V>::size_type;
+    using typename BoundedList<T, V>::reference;
+    using typename BoundedList<T, V>::const_reference;
+    using typename BoundedList<T, V>::iterator;
+    using typename BoundedList<T, V>::const_iterator;
+
+    BoundedListImpl() = default;
     BoundedListImpl(const BoundedListImpl&) = default;
     BoundedListImpl& operator=(const BoundedListImpl&) = default;
     ~BoundedListImpl() = default;
+
+    void reset() override { data_.clear(); }
+
+    size_type size() const noexcept override { return data_.size(); }
+    bool empty() const noexcept override { return data_.empty(); }
+    size_type capacity() const noexcept override { return data_.capacity(); }
+
+    void reserve(size_type n) override { data_.reserve(n); }
+    void resize(size_type n, uci::base::accessorType::AccessorType = V) override {
+        if (n > maxOccurs_) throwUciException("BoundedList::resize exceeds maxOccurs=" << maxOccurs_);
+        data_.resize(n);
+    }
+    void pop_back() noexcept override { data_.pop_back(); }
+    void clear() noexcept override { data_.clear(); }
+
+    void push_back(const T& v) override {
+        if (data_.size() >= maxOccurs_)
+            throwUciException("BoundedList::push_back exceeds maxOccurs=" << maxOccurs_);
+        data_.push_back(v);
+    }
+    template <typename U>
+    void push_back(U&& v) {
+        if (data_.size() >= maxOccurs_)
+            throwUciException("BoundedList::push_back exceeds maxOccurs=" << maxOccurs_);
+        data_.push_back(std::forward<U>(v));
+    }
+
+    reference operator[](size_type i) override { return data_[i]; }
+    const_reference operator[](size_type i) const override { return data_[i]; }
+    reference at(size_type i) override { return data_.at(i); }
+    const_reference at(size_type i) const override { return data_.at(i); }
+
+    iterator begin() override { return data_.begin(); }
+    const_iterator begin() const override { return data_.begin(); }
+    iterator end() override { return data_.end(); }
+    const_iterator end() const override { return data_.end(); }
+
+    size_type getMinimumOccurs() const noexcept override { return minOccurs_; }
+    size_type getMaximumOccurs() const noexcept override { return maxOccurs_; }
+    size_type max_size() const noexcept override { return maxOccurs_; }
+    size_type min_size() const noexcept override { return minOccurs_; }
+
+private:
+    size_type minOccurs_{MinOccurs};
+    size_type maxOccurs_{MaxOccurs};
+    std::vector<T> data_;
 };
 
 } // namespace base

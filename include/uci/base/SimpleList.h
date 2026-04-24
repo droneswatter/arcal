@@ -22,47 +22,43 @@ public:
     static constexpr size_type MAXIMUM_LENGTH = std::numeric_limits<size_type>::max();
 
     AccessorType getAccessorType() const noexcept override { return V; }
-    void reset() override { data_.clear(); }
     const std::string& typeName() const override {
         static const std::string name{"list"};
         return name;
     }
 
-    size_type size()     const noexcept { return data_.size(); }
-    bool      empty()    const noexcept { return data_.empty(); }
-    size_type capacity() const noexcept { return data_.capacity(); }
+    virtual size_type size()     const noexcept = 0;
+    virtual bool      empty()    const noexcept = 0;
+    virtual size_type capacity() const noexcept = 0;
 
-    void reserve(size_type n) { data_.reserve(n); }
-    void resize(size_type n, uci::base::accessorType::AccessorType = V) { data_.resize(n); }
-    void pop_back() noexcept  { data_.pop_back(); }
-    void clear()    noexcept  { data_.clear(); }
+    virtual void reserve(size_type n) = 0;
+    virtual void resize(size_type n, uci::base::accessorType::AccessorType = V) = 0;
+    virtual void pop_back() noexcept = 0;
+    virtual void clear() noexcept = 0;
 
-    void push_back(const T& v) { data_.push_back(v); }
+    virtual void push_back(const T& v) = 0;
 
-    reference       operator[](size_type i)       { return data_[i]; }
-    const_reference operator[](size_type i) const { return data_[i]; }
-    reference       at(size_type i)               { return data_.at(i); }
-    const_reference at(size_type i) const         { return data_.at(i); }
+    virtual reference       operator[](size_type i) = 0;
+    virtual const_reference operator[](size_type i) const = 0;
+    virtual reference       at(size_type i) = 0;
+    virtual const_reference at(size_type i) const = 0;
 
-    iterator       begin()       { return data_.begin(); }
-    const_iterator begin() const { return data_.begin(); }
-    iterator       end()         { return data_.end(); }
-    const_iterator end()   const { return data_.end(); }
+    virtual iterator       begin() = 0;
+    virtual const_iterator begin() const = 0;
+    virtual iterator       end() = 0;
+    virtual const_iterator end() const = 0;
 
-    size_type getLength()        const noexcept { return data_.size(); }
-    size_type getMinimumLength() const noexcept { return 0; }
-    size_type getMaximumLength() const noexcept { return MAXIMUM_LENGTH; }
-    size_type max_size()         const noexcept { return MAXIMUM_LENGTH; }
-    size_type min_size()         const noexcept { return 0; }
+    virtual size_type getLength() const noexcept = 0;
+    virtual size_type getMinimumLength() const noexcept = 0;
+    virtual size_type getMaximumLength() const noexcept = 0;
+    virtual size_type max_size() const noexcept = 0;
+    virtual size_type min_size() const noexcept = 0;
 
 protected:
     SimpleList() = default;
     SimpleList(const SimpleList&) = default;
     SimpleList& operator=(const SimpleList&) = default;
     ~SimpleList() override = default;
-
-private:
-    std::vector<T> data_;
 };
 
 } // namespace base
