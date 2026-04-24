@@ -13,6 +13,10 @@ standalone browser monitor roadmap belongs in `../arcal-busmon`.
 - LA-CAL server target: `arlacal-server`.
 - OWP smoke coverage for LA-CAL startup, `INIT`, `SUB`, `UNSUB`, `XSUB`, and
   `XUNSUB`.
+- LA-CAL server split into protocol, WebSocket session, topic monitor, server,
+  and entry-point modules.
+- Focused unit coverage for protocol helper parsing, token validation, glob
+  matching, WebSocket subprotocol matching, and `INFO` JSON shape.
 - Bus monitor architecture moved out of `arcal`: `arcal-busmon` now consumes
   LA-CAL WebSocket/OWP JSON instead of linking against private DDS internals.
 - CMake install target for public headers, `libarcal`,
@@ -25,9 +29,7 @@ standalone browser monitor roadmap belongs in `../arcal-busmon`.
 
 Make `arlacal-server` reliable enough to be the default bridge for tools.
 
-- Split the large `lacal/src/main.cpp` into protocol, WebSocket session, topic
-  monitor, and server modules.
-- Add focused unit tests for OWP parsing and error responses.
+- Add focused unit tests for OWP command handling and error responses.
 - Add protocol/interop fixtures for the supported OWP subset:
   - valid `INIT`
   - malformed `INIT`
