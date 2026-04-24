@@ -110,6 +110,7 @@ set_source_files_properties(
     ${CMAKE_SOURCE_DIR}/src/generated/cdr_register_all.cpp
     ${CMAKE_SOURCE_DIR}/src/generated/factories_all.cpp
     ${CMAKE_SOURCE_DIR}/src/generated/accessor_factory_all.cpp
+    ${CMAKE_SOURCE_DIR}/src/generated/type_lifecycle_all.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
 )
 
@@ -123,6 +124,7 @@ add_dependencies(arcal_cdr_objects arcal_generated)
 
 target_include_directories(arcal_cdr_objects PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/externalizer/cdr
 )
 
@@ -152,6 +154,7 @@ add_library(arcal SHARED
     src/dds/DdsWriterCore.cpp
     src/dds/arcal_payload.c
     src/dds/arcal_payload.cpp
+    src/generated/type_lifecycle_all.cpp
     src/generated/factories_all.cpp
     src/generated/accessor_factory_all.cpp
     src/ExternalizerLoader.cpp
