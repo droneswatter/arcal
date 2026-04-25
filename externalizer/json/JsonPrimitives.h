@@ -1,6 +1,8 @@
 #pragma once
 // JSON value/key encoding helpers — no heap allocation beyond the output string.
 
+#include "uci/base/UUID.h"
+
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -66,6 +68,7 @@ inline void emit_value(double v, std::string& out) {
 }
 
 inline void emit_value(const std::string& v, std::string& out) { emit_string(v, out); }
+inline void emit_value(const uci::base::UUID& v, std::string& out) { emit_string(v.toString(), out); }
 
 // bytes → lowercase hex string
 inline void emit_value(const std::vector<uint8_t>& v, std::string& out) {

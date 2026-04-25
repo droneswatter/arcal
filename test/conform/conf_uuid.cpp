@@ -1,6 +1,9 @@
 // Compile-only conformance: UUID API shape (OMSC-SPC-008 RevK).
 
 #include "uci/base/UUID.h"
+#include "uci/type/AtomicValueType.h"
+#include "uci/type/ID_Type.h"
+#include "uci/type/UniversallyUniqueIdentifierType.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -64,3 +67,19 @@ static_assert(std::is_same_v<decltype(std::declval<const UUID&>() < std::declval
 static_assert(std::is_same_v<decltype(std::declval<const UUID&>() <= std::declval<const UUID&>()), bool>);
 static_assert(std::is_same_v<decltype(std::declval<const UUID&>() > std::declval<const UUID&>()), bool>);
 static_assert(std::is_same_v<decltype(std::declval<const UUID&>() >= std::declval<const UUID&>()), bool>);
+
+static_assert(std::is_same_v<decltype(std::declval<const uci::type::ID_Type&>().getUUID()), UUID>);
+static_assert(std::is_same_v<decltype(std::declval<uci::type::ID_Type&>().setUUID(std::declval<const UUID&>())),
+                             uci::type::ID_Type&>);
+
+static_assert(std::is_same_v<decltype(std::declval<const uci::type::UniversallyUniqueIdentifierType&>().getValue()),
+                             const UUID&>);
+static_assert(std::is_same_v<decltype(std::declval<uci::type::UniversallyUniqueIdentifierType&>().setValue(std::declval<const UUID&>())),
+                             void>);
+static_assert(std::is_same_v<decltype(std::declval<uci::type::UniversallyUniqueIdentifierType&>() = std::declval<const UUID&>()),
+                             uci::type::UniversallyUniqueIdentifierType&>);
+static_assert(std::is_same_v<decltype(static_cast<UUID>(std::declval<const uci::type::UniversallyUniqueIdentifierType&>())),
+                             UUID>);
+
+static_assert(std::is_same_v<decltype(std::declval<uci::type::AtomicValueType&>().chooseUUID_Value()), UUID&>);
+static_assert(std::is_same_v<decltype(std::declval<const uci::type::AtomicValueType&>().getUUID_Value()), const UUID&>);

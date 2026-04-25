@@ -1,8 +1,17 @@
 # AMTI Service Demo
 
-This sample demonstrates the CAL message choreography for a small AMTI service.
+This sample demonstrates the CAL message choreography for a small AMTI service
+using the raw generated CxxCAL API. It intentionally keeps `T::create(asb)`,
+`T::destroy(accessor)`, concrete listener classes, and explicit reader/writer
+cleanup visible. It also shows the direct ASBC lifecycle:
+`uci_getAbstractServiceBusConnection(...)`, `shutdown()`, and
+`uci_destroyAbstractServiceBusConnection(...)`.
+
 It is documentation-grade: the AMTI payloads are intentionally skeletal, while
 the identity, UUID, topic, command, status, and activity flow are explicit.
+
+For the same style of flow using ARCAL's optional C++ helper layer, compare this
+sample with `examples/smti_service_demo`.
 
 The sample uses configured CAL identity. Do not run it with `ARCAL_CONFIG=NONE`.
 

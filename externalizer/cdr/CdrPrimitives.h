@@ -7,6 +7,7 @@
 // decode_* functions read from a cursor (offset into a const byte span) and advance it.
 
 #include "uci/base/UCIException.h"
+#include "uci/base/UUID.h"
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -93,6 +94,10 @@ inline void encode_string(std::vector<uint8_t>& buf, const std::string& s) {
     encode_uint32(buf, static_cast<uint32_t>(s.size() + 1));
     buf.insert(buf.end(), s.begin(), s.end());
     buf.push_back(0);
+}
+
+inline void encode_uuid(std::vector<uint8_t>& buf, const uci::base::UUID& uuid) {
+    encode_string(buf, uuid.toString());
 }
 
 // Byte sequence: 4-byte length prefix + raw bytes
@@ -186,6 +191,10 @@ inline std::string decode_string(const std::vector<uint8_t>& buf, std::size_t& o
     std::string s(reinterpret_cast<const char*>(buf.data() + off), len - 1); // exclude null
     off += len;
     return s;
+}
+
+inline uci::base::UUID decode_uuid(const std::vector<uint8_t>& buf, std::size_t& off) {
+    return uci::base::UUID::fromString(decode_string(buf, off));
 }
 
 inline std::vector<uint8_t> decode_bytes(const std::vector<uint8_t>& buf, std::size_t& off) {

@@ -37,6 +37,8 @@ PROTECTED_NS_MAP = {
 }
 
 XSD_NS = "http://www.w3.org/2001/XMLSchema"
+UUID_TYPE_NAME = "UniversallyUniqueIdentifierType"
+UUID_CXX_TYPE = "uci::base::UUID"
 OMS_NS = "https://www.vdl.afrl.af.mil/programs/oam"
 
 # ---------------------------------------------------------------------------
@@ -133,6 +135,7 @@ class FieldModel:
         self.type_is_abstract = False
         self.type_is_generated = False
         self.storage_cxx_type = self.cxx_type
+        self.is_uuid = type_name == UUID_TYPE_NAME
 
 
 class ChoiceModel:
@@ -154,6 +157,14 @@ class TypeModel:
         self.is_string_restriction = is_string_restriction
         self.is_abstract = is_abstract
         self.derived_types: list[str] = []
+
+    @property
+    def uses_uuid(self) -> bool:
+        if self.base_type == UUID_CXX_TYPE:
+            return True
+        if any(field.is_uuid for field in self.fields):
+            return True
+        return any(variant.is_uuid for choice in self.choices for variant in choice.variants)
 
 
 class GlobalElementModel:
@@ -188,6 +199,8 @@ class SchemaParser:
         self._resolve_inheritance_metadata()
 
     def _get_accessor_type(self, type_name: str) -> str:
+        if type_name == UUID_TYPE_NAME:
+            return "uci::base::accessorType::ACCESSOR_TYPE_UUID"
         if type_name in PRIMITIVE_ACCESSOR_TYPE_MAP:
             return PRIMITIVE_ACCESSOR_TYPE_MAP[type_name]
         if type_name in self.types:
@@ -202,13 +215,15 @@ class SchemaParser:
         for type_model in self.types.values():
             for field in type_model.fields:
                 field.accessor_type = self._get_accessor_type(field.type_name)
-                field.type_is_generated = field.type_name in self.types
+                field.is_uuid = field.type_name == UUID_TYPE_NAME
+                field.type_is_generated = field.type_name in self.types and not field.is_uuid
                 if field.type_is_generated:
                     field.storage_cxx_type = f"{field.cxx_type}Impl"
             for choice in type_model.choices:
                 for v in choice.variants:
                     v.accessor_type = self._get_accessor_type(v.type_name)
-                    v.type_is_generated = v.type_name in self.types
+                    v.is_uuid = v.type_name == UUID_TYPE_NAME
+                    v.type_is_generated = v.type_name in self.types and not v.is_uuid
                     if v.type_is_generated:
                         v.storage_cxx_type = f"{v.cxx_type}Impl"
 
@@ -314,7 +329,7 @@ class SchemaParser:
             list_kind = "bounded"
 
         # Map XSD primitives to C++ built-in types directly
-        resolved_type = CXX_PRIMITIVE_MAP.get(type_name, None)
+        resolved_type = UUID_CXX_TYPE if type_name == UUID_TYPE_NAME else CXX_PRIMITIVE_MAP.get(type_name, None)
         return FieldModel(name, type_name, optional=optional,
                           list_kind=list_kind, min_occurs=min_occ,
                           max_occurs_val=max_occ,
@@ -338,7 +353,7 @@ class SchemaParser:
 
         # Non-enumeration restriction (length/pattern facets): wrap the base type
         base = restriction.get("base", "xs:string").split(":")[-1]
-        resolved = CXX_PRIMITIVE_MAP.get(base, "std::string")
+        resolved = UUID_CXX_TYPE if name == UUID_TYPE_NAME else CXX_PRIMITIVE_MAP.get(base, "std::string")
         return TypeModel(name, base_type=resolved, fields=[], is_string_restriction=True)
 
 
@@ -354,6 +369,9 @@ ACCESSOR_H_TEMPLATE = """\
 #include "uci/base/AbstractServiceBusConnection.h"
 #include "uci/base/BoundedList.h"
 #include "uci/base/SimpleList.h"
+{% if type.uses_uuid %}\
+#include "uci/base/UUID.h"
+{% endif %}\
 {% if type.base_type and type.base_type not in primitive_types %}\
 #include "uci/type/{{ type.base_type }}.h"
 {% endif %}\
@@ -450,6 +468,9 @@ public:
 {% elif field.list_kind == "unbounded" %}\
     virtual uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() = 0;
     virtual const uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() const = 0;
+{% elif field.is_uuid %}\
+    virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }} get{{ field.cxx_name }}() const = 0;
+    virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) = 0;
 {% elif field.optional %}\
     virtual bool has{{ field.cxx_name }}() const = 0;
     virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& enable{{ field.cxx_name }}() = 0;
@@ -544,6 +565,8 @@ public:
         for (const auto& item : rhs.get{{ field.cxx_name }}()) {
             {{ field.name }}_.push_back(item);
         }
+{% elif field.is_uuid %}\
+        {{ field.name }}_ = rhs.get{{ field.cxx_name }}();
 {% elif field.optional %}\
         has{{ field.cxx_name }}_ = rhs.has{{ field.cxx_name }}();
         if (has{{ field.cxx_name }}_) {
@@ -582,6 +605,9 @@ public:
 {% elif field.list_kind == "unbounded" %}\
     uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() override { return {{ field.name }}_; }
     const uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() const override { return {{ field.name }}_; }
+{% elif field.is_uuid %}\
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }} get{{ field.cxx_name }}() const override { return {{ field.name }}_; }
+    UciType& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) override { {{ field.name }}_ = v; return *this; }
 {% elif field.optional %}\
     bool has{{ field.cxx_name }}() const override { return has{{ field.cxx_name }}_; }
     {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& enable{{ field.cxx_name }}() override { has{{ field.cxx_name }}_ = true; return {{ field.name }}_; }
@@ -614,6 +640,8 @@ private:
     uci::base::BoundedListImpl<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}, {{ field | storage_qualify(primitive_types) }}> {{ field.name }}_;
 {% elif field.list_kind == "unbounded" %}\
     uci::base::SimpleListImpl<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}, {{ field | storage_qualify(primitive_types) }}> {{ field.name }}_;
+{% elif field.is_uuid %}\
+    {{ field | storage_qualify(primitive_types) }} {{ field.name }}_;
 {% elif field.optional %}\
     bool has{{ field.cxx_name }}_{false};
     {{ field | storage_qualify(primitive_types) }} {{ field.name }}_;
@@ -783,6 +811,9 @@ STRING_RESTRICTION_H_TEMPLATE = """\
 
 #include "uci/base/AbstractServiceBusConnection.h"
 #include "uci/base/Accessor.h"
+{% if type.base_type == uuid_cxx_type %}\
+#include "uci/base/UUID.h"
+{% endif %}\
 #include <string>
 {% if type.base_type == "std::vector<uint8_t>" %}\
 #include <vector>
@@ -874,6 +905,7 @@ PRIMITIVE_TYPES = {
     "string", "anyURI", "dateTime", "dateTimeStamp", "unsignedByte",
     "unsignedShort", "unsignedInt", "unsignedLong", "integer", "decimal",
     "base64Binary", "hexBinary", "ID", "IDREF", "NMTOKEN", "time", "date", "duration",
+    UUID_TYPE_NAME,
 }
 
 CXX_PRIMITIVE_MAP = {
@@ -888,6 +920,7 @@ CXX_PRIMITIVE_MAP = {
     "date": "std::string", "time": "std::string", "duration": "std::string",
     "base64Binary": "std::vector<uint8_t>", "hexBinary": "std::vector<uint8_t>",
     "ID": "std::string", "IDREF": "std::string", "NMTOKEN": "std::string",
+    UUID_TYPE_NAME: UUID_CXX_TYPE,
 }
 
 
@@ -949,7 +982,7 @@ def render_type(type_model: TypeModel, uci_version: str,
         tmpl = _TMPL_ACCESSOR
     return tmpl.render(type=type_model, primitive_types=PRIMITIVE_TYPES,
                        cxx_primitive_map=CXX_PRIMITIVE_MAP, uci_version=uci_version,
-                       global_element=global_element)
+                       global_element=global_element, uuid_cxx_type=UUID_CXX_TYPE)
 
 
 def render_type_impl(type_model: TypeModel) -> str:
@@ -984,6 +1017,7 @@ CDR_ENCODE_MAP = {
     "double":   "arcal::externalizer::cdr::encode_double",
     "std::string": "arcal::externalizer::cdr::encode_string",
     "std::vector<uint8_t>": "arcal::externalizer::cdr::encode_bytes",
+    UUID_CXX_TYPE: "arcal::externalizer::cdr::encode_uuid",
 }
 CDR_DECODE_MAP = {k: v.replace("encode_", "decode_") for k, v in CDR_ENCODE_MAP.items()}
 
@@ -1057,6 +1091,8 @@ void {{ type.cxx_name }}_serialize_impl(const uci::type::{{ type.cxx_name }}& ob
         arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ field.cxx_type }}Impl::TYPE_TAG).serialize(item, buf);
 {% endif %}\
     }
+{% elif field.is_uuid %}\
+    {{ encode_map.get(field.cxx_type, 'arcal::externalizer::cdr::encode_string') }}(buf, obj.get{{ field.cxx_name }}());
 {% elif field.optional %}\
     arcal::externalizer::cdr::encode_optional_flag(buf, obj.has{{ field.cxx_name }}());
     if (obj.has{{ field.cxx_name }}()) {
@@ -1111,6 +1147,8 @@ void {{ type.cxx_name }}_deserialize_impl(uci::type::{{ type.cxx_name }}& obj, c
 {% endif %}\
       }
     }
+{% elif field.is_uuid %}\
+    obj.set{{ field.cxx_name }}({{ decode_map.get(field.cxx_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off));
 {% elif field.optional %}\
     if (arcal::externalizer::cdr::decode_optional_flag(buf, off)) {
 {% if field.type_name in primitive_types %}\
@@ -1316,6 +1354,9 @@ void {{ type.cxx_name }}_serialize_fields_impl(const uci::type::{{ type.cxx_name
       }
     }
     out += ']';
+{% elif field.is_uuid %}\
+    json_ext::emit_key("{{ field.name }}", out, first);
+    json_ext::emit_value(obj.get{{ field.cxx_name }}(), out);
 {% elif field.optional %}\
     if (obj.has{{ field.cxx_name }}()) {
         json_ext::emit_key("{{ field.name }}", out, first);
@@ -1383,6 +1424,11 @@ void {{ type.cxx_name }}_deserialize_fields_impl(const nlohmann::json& value, uc
             obj.get{{ field.cxx_name }}().push_back(item);
 {% endif %}\
         }
+    }
+{% elif field.is_uuid %}\
+    {
+        const auto& member = json_ext::require_member(value, "{{ field.name }}", "{{ type.name }}");
+        obj.set{{ field.cxx_name }}(json_ext::parse_value<{{ field.cxx_type }}>(member, "{{ type.name }}.{{ field.name }}"));
     }
 {% elif field.optional %}\
     if (auto member = json_ext::optional_member(value, "{{ field.name }}", "{{ type.name }}")) {

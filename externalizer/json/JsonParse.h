@@ -1,6 +1,7 @@
 #pragma once
 
 #include "uci/base/UCIException.h"
+#include "uci/base/UUID.h"
 #include <nlohmann/json.hpp>
 #include <cstdint>
 #include <exception>
@@ -87,6 +88,11 @@ T parse_value(const nlohmann::json& value, const char* context) {
             throwUciException("JsonExternalizer::read: expected string for " << context);
         }
         return value.get<std::string>();
+    } else if constexpr (std::is_same_v<T, uci::base::UUID>) {
+        if (!value.is_string()) {
+            throwUciException("JsonExternalizer::read: expected UUID string for " << context);
+        }
+        return uci::base::UUID::fromString(value.get<std::string>());
     } else if constexpr (std::is_same_v<T, std::vector<uint8_t>>) {
         return parse_hex_bytes(value, context);
     } else if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) {
