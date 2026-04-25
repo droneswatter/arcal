@@ -32,10 +32,24 @@ Add to the CAL Config a list of Systems by Name and UUID.
 Each System has a UUID, Services and Subsystems.
 Each Subsystem has a UUID, Capabilities and Services.
 Each Service has a Name and UUID.
-The ASBC constructor accepts a Service Name. We need to decide:
-- One config file with all Systems, and the same Service on each has a unique name
-- One config file with all Systems, and env var picks the System, each Service can have the same name
-- One config file for each System
+Use one config file that can contain multiple systems. Select the active system
+explicitly, for example with `ARCAL_SYSTEM`, unless the config contains exactly
+one system. Service names must be unique within the selected system. The ASBC
+constructor accepts a Service Name and resolves it within that selected system.
+
+Configured mode is strict:
+- If `ARCAL_CONFIG` points to a config file, unknown service names are rejected.
+- If multiple systems exist and no active system is selected, initialization is
+  rejected.
+- If duplicate service names exist in the selected system, config validation
+  fails.
+- UUIDs for configured systems, services, subsystems, components, and
+  capabilities come from config.
+
+Config-less mode is only allowed by explicit opt-out, such as
+`ARCAL_CONFIG=NONE`. In that mode ARCAL may keep today's deterministic UUID
+fallback for development and tests, but missing or unreadable config must not
+silently fall back to config-less behavior.
 
 ## P1: Optional YAML Support for Config File
 
