@@ -25,6 +25,7 @@ find_package(nlohmann_json 3.12.0 REQUIRED)
 option(ARCAL_BUILD_TESTS         "Build CERT test suite"  ON)
 option(ARCAL_BUILD_E2E_TESTS     "Build E2E smoke tests"  ON)
 option(ARCAL_BUILD_INSTALL_TESTS "Build install smoke tests" ON)
+option(ARCAL_BUILD_EXAMPLES      "Build optional example applications" OFF)
 
 if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS OR ARCAL_BUILD_INSTALL_TESTS)
     enable_testing()
@@ -202,6 +203,14 @@ if(ARCAL_BUILD_LACAL)
 endif()
 
 # ---------------------------------------------------------------------------
+# Examples
+# ---------------------------------------------------------------------------
+
+if(ARCAL_BUILD_EXAMPLES)
+    add_subdirectory(examples/amti_service_demo)
+endif()
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
@@ -286,4 +295,14 @@ install(
 install(
     FILES ${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml
     DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal/examples
+)
+
+install(
+    DIRECTORY examples/amti_service_demo/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal/examples/amti_service_demo
+    FILES_MATCHING
+        PATTERN "*.cpp"
+        PATTERN "*.md"
+        PATTERN "*.json"
+        PATTERN "CMakeLists.txt"
 )

@@ -24,6 +24,8 @@ standalone browser monitor roadmap belongs in `../arcal-busmon`.
   reference docs, and example Cyclone DDS config.
 - Install-tree smoke coverage for downstream `find_package(arcal CONFIG
   REQUIRED)` consumers and installed `arlacal-server`.
+- Optional AMTI service demo with configured capability UUIDs, dynamic
+  command/activity UUIDs, and message-flow diagrams.
 
 
 ## P0: CAL Config UUIDs
@@ -50,6 +52,61 @@ Config-less mode is only allowed by explicit opt-out, such as
 `ARCAL_CONFIG=NONE`. In that mode ARCAL may keep today's deterministic UUID
 fallback for development and tests, but missing or unreadable config must not
 silently fall back to config-less behavior.
+
+## P0: Post-Review Fixes (April 2025)
+
+Findings from cross-model review of bd99b57 / a2e1faf / 266f334.
+
+### Must fix
+
+**ASBC destructor stalls up to 2 s per instance**
+`~DdsAbstractServiceBusConnection()` sets `running_ = false` but never calls
+`monitorCv_.notify_all()`. The monitor thread is blocked in `wait_for(2 s,
+predicate)` and will not wake early. The destructor therefore blocks for up to
+2 s per instance. The `cal_config_identity` test creates two live ASBC objects
+that are destroyed without calling `shutdown()` first — adding ~4 s of
+unnecessary latency to that test.
+Fix: have the destructor notify the cv (mirroring the pattern already used in
+`shutdown()`), or have it call `shutdown()` guarded by `shutdownRequested_`.
+
+### Should fix
+
+**Root-level services silently produce a nil subsystem UUID**
+`parseServices(system, …, uci::base::UUID{}, services)` at CalConfig.cpp:157
+gives every service declared directly under a `system` (not under a
+`subsystem`) a default-constructed UUID as its subsystem UUID. This path is
+untested and the nil UUID propagates out of `getMySubsystemUUID()` without
+any warning. Decide whether root-level services are spec-valid; if yes,
+document the nil UUID in CalConfig.h and add a test; if no, add a validation
+error.
+
+**`arcalMakeCdrExternalizer()` is defined but unreachable**
+Defined in `src/dds/CdrBridge.cpp` but not declared in
+`include/arcal/CdrBridge.h`. No other TU can call it. Became dead code once
+the `registerCdrExternalizerFactory` pattern was introduced in bd99b57.
+Remove or declare and call it from the ExternalizerLoader path.
+
+### Nice to have
+
+**CdrRegistry string-based APIs are vestigial**
+`registerHandler()`, `lookup(typeName)`, and `has(typeName)` in CdrRegistry.h
+are never called after the tag-dispatch migration. `table_` is always empty at
+runtime. Remove them or mark them explicitly as reserved.
+
+**FNV collision check in compiler.py covers only globally-registered types**
+`render_cdr_register_all` raises `ValueError` on tag collisions within its
+`type_models` list, but embedded/field types also carry `TYPE_TAG` and are
+dispatched via `lookupByTag` during composite serialization. Verify that
+`type_models` covers all types, not only top-level global elements. The
+runtime backstop (`registerByTag` throws on duplicate at static-init time) is
+adequate but a compile-time error is better.
+
+**`ARCAL_SYSTEM` selection has no test coverage**
+`selectSystem()` has four distinct branches; only the single-system auto-select
+path is exercised. Add cases for: (a) multi-system config with correct
+`ARCAL_SYSTEM`, (b) multi-system config with no `ARCAL_SYSTEM` (should fail),
+(c) `ARCAL_SYSTEM` not present in config (should fail), and (d) config file
+path that does not exist.
 
 ## P1: Optional YAML Support for Config File
 

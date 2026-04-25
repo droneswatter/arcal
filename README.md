@@ -136,6 +136,7 @@ bash scripts/build.sh
 | `ARCAL_BUILD_TESTS` | `ON` | Build the CERT test suite |
 | `ARCAL_BUILD_E2E_TESTS` | `ON` | Build the E2E smoke tests |
 | `ARCAL_BUILD_INSTALL_TESTS` | `ON` | Register install-tree smoke tests |
+| `ARCAL_BUILD_EXAMPLES` | `OFF` | Build optional example applications |
 | `ARCAL_BUILD_LACAL` | `ON` | Build `arlacal-server`, the WebSocket/OWP language-agnostic CAL bridge |
 | `ARCAL_UNITY_BATCH_SIZE` | `25` | Source files per unity build batch; increase to reduce compile time at the cost of higher peak memory |
 
@@ -174,6 +175,7 @@ The install tree includes:
 - CMake package files under `lib/cmake/arcal/`
 - reference docs under `share/arcal/`
 - the localhost Cyclone DDS config under `share/arcal/examples/`
+- optional example source under `share/arcal/examples/`
 
 For non-standard prefixes, make sure the dynamic loader can see the installed
 shared libraries. `arlacal-server` is installed with an rpath that points at
@@ -335,6 +337,27 @@ Polling mode (no listener required):
 MyListener listener;
 unsigned long n = reader->read(/*timeoutMs=*/100, /*maxMessages=*/1, listener);
 // listener.handleMessage() was called n times
+```
+
+### Recommended sample app
+
+The richer sample is `examples/amti_service_demo`. It demonstrates configured
+CAL identity, configured static capability UUIDs, dynamic command/activity
+UUIDs, AMTI capability publication, capability status, command handling,
+command status, and activity updates.
+
+Build it explicitly:
+
+```bash
+cmake -S . -B build -DARCAL_BUILD_EXAMPLES=ON -G Ninja
+cmake --build build --target arcal_amti_service_demo -j4
+```
+
+The sample is not registered with CTest. Its README includes Mermaid traffic
+diagrams showing the message flow and UUID ownership:
+
+```bash
+examples/amti_service_demo/README.md
 ```
 
 ### Using the CDR externalizer

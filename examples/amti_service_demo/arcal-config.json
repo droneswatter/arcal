@@ -1,0 +1,30 @@
+{
+  "systems": [
+    {
+      "name": "AmtiDemoSystem",
+      "uuid": "10000000-0000-4000-8000-000000000001",
+      "subsystems": [
+        {
+          "name": "AmtiPayload",
+          "uuid": "20000000-0000-4000-8000-000000000001",
+          "services": [
+            {
+              "name": "AmtiSensorService",
+              "uuid": "30000000-0000-4000-8000-000000000001"
+            },
+            {
+              "name": "AmtiOperatorService",
+              "uuid": "30000000-0000-4000-8000-000000000002"
+            }
+          ],
+          "capabilities": [
+            {
+              "name": "AmtiSurveillanceCapability",
+              "uuid": "40000000-0000-4000-8000-000000000001"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
