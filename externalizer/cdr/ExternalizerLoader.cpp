@@ -1,6 +1,7 @@
 #include "CdrExternalizer.h"
 #include "CdrRegistry.h"
 #include "arcal/CdrBridge.h"
+#include "arcal/TypedAccessor.h"
 #include "uci/base/UCIException.h"
 #include <mutex>
 
@@ -17,7 +18,8 @@ namespace arcal { namespace externalizer { namespace cdr {
 namespace {
 
 void bridge_serialize(const uci::base::Accessor& obj, std::vector<uint8_t>& out) {
-    arcal::externalizer::CdrRegistry::instance().lookup(obj.typeName()).serialize(obj, out);
+    const auto& typed = dynamic_cast<const arcal::type::TypedAccessor&>(obj);
+    arcal::externalizer::CdrRegistry::instance().lookupByTag(typed.typeTag()).serialize(obj, out);
 }
 
 void bridge_deserialize_by_tag(uint32_t tag, const std::vector<uint8_t>& in,

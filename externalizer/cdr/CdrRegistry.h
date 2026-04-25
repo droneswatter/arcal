@@ -35,8 +35,11 @@ public:
         table_[typeName] = handlers;
     }
 
-    void registerByTag(uint32_t tag, const std::string& typeName) {
-        tagTable_[tag] = typeName;
+    void registerByTag(uint32_t tag, const std::string& typeName, CdrHandlers handlers) {
+        auto inserted = tagTable_.emplace(tag, handlers);
+        if (!inserted.second)
+            throw std::runtime_error("CdrRegistry: duplicate handler for type tag " + std::to_string(tag));
+        tagNameTable_.emplace(tag, typeName);
     }
 
     const CdrHandlers& lookup(const std::string& typeName) const {
@@ -50,13 +53,13 @@ public:
         auto it = tagTable_.find(tag);
         if (it == tagTable_.end())
             throw std::runtime_error("CdrRegistry: no handler for type tag " + std::to_string(tag));
-        return lookup(it->second);
+        return it->second;
     }
 
     // Returns empty string if tag is unknown.
     std::string typeNameForTag(uint32_t tag) const {
-        auto it = tagTable_.find(tag);
-        return it != tagTable_.end() ? it->second : std::string{};
+        auto it = tagNameTable_.find(tag);
+        return it != tagNameTable_.end() ? it->second : std::string{};
     }
 
     bool has(const std::string& typeName) const {
@@ -65,7 +68,8 @@ public:
 
 private:
     std::unordered_map<std::string,  CdrHandlers> table_;
-    std::unordered_map<uint32_t,     std::string>  tagTable_;
+    std::unordered_map<uint32_t,     CdrHandlers>  tagTable_;
+    std::unordered_map<uint32_t,     std::string>  tagNameTable_;
 };
 
 } // namespace externalizer
