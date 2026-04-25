@@ -208,6 +208,7 @@ endif()
 
 if(ARCAL_BUILD_EXAMPLES)
     add_subdirectory(examples/amti_service_demo)
+    add_subdirectory(examples/smti_service_demo)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -298,8 +299,8 @@ install(
 )
 
 install(
-    DIRECTORY examples/amti_service_demo/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal/examples/amti_service_demo
+    DIRECTORY examples/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal/examples
     FILES_MATCHING
         PATTERN "*.cpp"
         PATTERN "*.md"

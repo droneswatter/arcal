@@ -26,6 +26,9 @@ standalone browser monitor roadmap belongs in `../arcal-busmon`.
   REQUIRED)` consumers and installed `arlacal-server`.
 - Optional AMTI service demo with configured capability UUIDs, dynamic
   command/activity UUIDs, and message-flow diagrams.
+- Header-only `uci::utils` C++ helpers and companion SMTI service demo showing
+  RAII message/reader/writer ownership, lambda listeners, ID helpers, and enum
+  helpers.
 
 
 ## P0: CAL Config UUIDs
@@ -112,6 +115,27 @@ path that does not exist.
 
 Pick an open source C++ YAML lib and detect whether it is available.
 If so, detect .yml and .yaml extensions and parse them in yaml instead of json.
+
+## P1: C++ Ergonomic Helper Follow-Through
+
+The first header-only `uci::utils` helper set exists. Keep refining optional,
+non-spec helper APIs that make ordinary C++ CAL applications less verbose while
+preserving the public CxxCAL interfaces and lifecycle.
+
+- Decide whether to add scoped listener examples that store
+  `FunctionListener<T>` and `ScopedListener<T>` as member variables.
+- Consider small refinements to helper naming after using the SMTI sample as
+  the first comparison point.
+- Keep AMTI as the raw CxxCAL sample and SMTI as the helper-based sample.
+- Avoid domain-specific message builders until repeated application patterns
+  make them worth the extra abstraction.
+
+Verification:
+
+```bash
+cmake --build build --target arcal_conformance arcal_amti_service_demo arcal_smti_service_demo
+ctest --test-dir build -R "^(CONFORM|CONFIG|CDR|JSON)-" --output-on-failure
+```
 
 ## P0: LA-CAL Hardening
 

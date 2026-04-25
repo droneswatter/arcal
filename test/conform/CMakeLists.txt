@@ -15,6 +15,7 @@ add_library(arcal_conform OBJECT
     conf_generated_lifecycle_target.cpp
     conf_lists.cpp
     conf_uuid.cpp
+    conf_utils.cpp
 )
 
 target_include_directories(arcal_conform PRIVATE

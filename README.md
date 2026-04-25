@@ -288,6 +288,7 @@ uci::base::AbstractServiceBusConnection* conn =
 
 Free the connection when done:
 ```cpp
+conn->shutdown();
 uci_destroyAbstractServiceBusConnection(conn);
 ```
 
@@ -296,13 +297,15 @@ uci_destroyAbstractServiceBusConnection(conn);
 ```cpp
 #include "uci/type/ActionCommand.h"  // global element header: factories + listener
 
-uci::base::Writer* writer = uci::type::createActionCommandWriter("ActionCommand");
+auto& writer = uci::type::ActionCommandMT::createWriter("ActionCommand", conn);
+auto& msg = uci::type::ActionCommandMT::create(conn);
 
-uci::type::ActionCommandMT msg;
 // ... populate msg fields ...
-writer->write(msg);
+writer.write(msg);
 
-uci::type::destroyActionCommandWriter(writer);
+uci::type::ActionCommandMT::destroy(msg);
+writer.close();
+uci::type::ActionCommandMT::destroyWriter(writer);
 ```
 
 ### Subscribing to a message
@@ -312,7 +315,7 @@ Implement the generated typed listener interface declared in the global element 
 ```cpp
 #include "uci/type/ActionCommand.h"
 
-class MyListener : public uci::type::ActionCommandListener {
+class MyListener : public uci::type::ActionCommandMT::Listener {
 public:
     void handleMessage(const uci::type::ActionCommandMT& msg) override {
         // handle message
@@ -324,41 +327,55 @@ Then register it with a reader:
 
 ```cpp
 MyListener listener;
-uci::base::Reader* reader = uci::type::createActionCommandReader("ActionCommand");
-reader->addListener(&listener);
+auto& reader = uci::type::ActionCommandMT::createReader("ActionCommand", conn);
+reader.addListener(listener);
 
 // Remove when done
-reader->removeListener(&listener);
-uci::type::destroyActionCommandReader(reader);
+reader.removeListener(listener);
+reader.close();
+uci::type::ActionCommandMT::destroyReader(reader);
 ```
 
 Polling mode (no listener required):
 ```cpp
 MyListener listener;
-unsigned long n = reader->read(/*timeoutMs=*/100, /*maxMessages=*/1, listener);
+unsigned long n = reader.read(/*timeoutMs=*/100, /*maxMessages=*/1, listener);
 // listener.handleMessage() was called n times
 ```
 
 ### Recommended sample app
 
-The richer sample is `examples/amti_service_demo`. It demonstrates configured
-CAL identity, configured static capability UUIDs, dynamic command/activity
-UUIDs, AMTI capability publication, capability status, command handling,
-command status, and activity updates.
+There are two richer samples:
+
+- `examples/amti_service_demo` keeps the raw CxxCAL lifecycle visible:
+  `T::create(asb)`, `T::destroy(accessor)`, concrete listener classes, and
+  explicit reader/writer cleanup.
+- `examples/smti_service_demo` demonstrates the optional `uci::utils` C++
+  helpers: `makeMessage<T>()`, `ReaderPtr<T>`, `WriterPtr<T>`,
+  `FunctionListener<T>`, ID helpers, and enum helpers.
+
+Both samples demonstrate configured CAL identity, configured static capability
+UUIDs, dynamic command/activity UUIDs, capability publication, capability
+status, command handling, command status, and activity updates.
 
 Build it explicitly:
 
 ```bash
 cmake -S . -B build -DARCAL_BUILD_EXAMPLES=ON -G Ninja
-cmake --build build --target arcal_amti_service_demo -j4
+cmake --build build --target arcal_amti_service_demo arcal_smti_service_demo -j4
 ```
 
-The sample is not registered with CTest. Its README includes Mermaid traffic
+The samples are not registered with CTest. Their READMEs include traffic
 diagrams showing the message flow and UUID ownership:
 
 ```bash
 examples/amti_service_demo/README.md
+examples/smti_service_demo/README.md
 ```
+
+`uci::utils` is ARCAL-provided convenience API, not part of OMSC-SPC-008. It is
+header-only under `include/uci/utils/` and wraps the public generated CxxCAL
+interfaces without changing them.
 
 ### Using the CDR externalizer
 
@@ -384,15 +401,17 @@ The JSON externalizer is built as `arcal_externalizer_json` and is available thr
 uci::base::ExternalizerLoader* loader = uci_getExternalizerLoader();
 uci::base::Externalizer* json = loader->getExternalizer("JSON", "2.5.0", "2.5.0");
 
-uci::type::ActionCommandMT msg;
+auto& msg = uci::type::ActionCommandMT::create(conn);
 msg.getMessageHeader().getSchemaVersion().setValue("2.5.0");
 
 std::string text;
 json->write(msg, text);
 
-uci::type::ActionCommandMT parsed;
+auto& parsed = uci::type::ActionCommandMT::create(conn);
 json->read(text, parsed);
 
+uci::type::ActionCommandMT::destroy(parsed);
+uci::type::ActionCommandMT::destroy(msg);
 loader->destroyExternalizer(json);
 uci_destroyExternalizerLoader(loader);
 ```

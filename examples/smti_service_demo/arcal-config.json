@@ -1,0 +1,30 @@
+{
+  "systems": [
+    {
+      "name": "SmtiDemoSystem",
+      "uuid": "11000000-0000-4000-8000-000000000001",
+      "subsystems": [
+        {
+          "name": "SmtiPayload",
+          "uuid": "22000000-0000-4000-8000-000000000001",
+          "services": [
+            {
+              "name": "SmtiSensorService",
+              "uuid": "33000000-0000-4000-8000-000000000001"
+            },
+            {
+              "name": "SmtiOperatorService",
+              "uuid": "33000000-0000-4000-8000-000000000002"
+            }
+          ],
+          "capabilities": [
+            {
+              "name": "SmtiSurveillanceCapability",
+              "uuid": "44000000-0000-4000-8000-000000000001"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
