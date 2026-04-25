@@ -147,6 +147,7 @@ target_precompile_headers(arcal_cdr_objects PRIVATE
 target_compile_options(arcal_cdr_objects PRIVATE -g1 -pipe)
 
 add_library(arcal SHARED
+    src/config/CalConfig.cpp
     src/UUID.cpp
     src/dds/CdrBridge.cpp
     src/dds/DdsAbstractServiceBusConnection.cpp
@@ -176,7 +177,7 @@ set_target_properties(arcal PROPERTIES
     INSTALL_RPATH "$ORIGIN"
 )
 
-target_link_libraries(arcal PUBLIC CycloneDDS-CXX::ddscxx PRIVATE ${CMAKE_DL_LIBS})
+target_link_libraries(arcal PUBLIC CycloneDDS-CXX::ddscxx PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS})
 
 # Use mold linker if available — significantly faster than ld/lld for large targets.
 find_program(MOLD_LINKER mold)
@@ -206,6 +207,7 @@ endif()
 
 if(ARCAL_BUILD_TESTS)
     add_subdirectory(test/conform)
+    add_subdirectory(test/config)
     add_subdirectory(test/json)
     add_subdirectory(test/cdr)
 endif()
@@ -215,7 +217,7 @@ if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
     set(ARCAL_CERT_BUILD_CERT       ${ARCAL_BUILD_TESTS}     CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_BUILD_E2E        ${ARCAL_BUILD_E2E_TESTS} CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_TEST_ENV
-        "CYCLONEDDS_URI=file://${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml"
+        "CYCLONEDDS_URI=file://${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml;ARCAL_CONFIG=NONE"
         CACHE STRING "" FORCE)
     add_subdirectory(test/arcal-cert)
 endif()

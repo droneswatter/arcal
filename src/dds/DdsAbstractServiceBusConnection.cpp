@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <utility>
 
 namespace arcal {
 namespace dds {
@@ -17,14 +18,23 @@ static constexpr const char* ASB_VERSION             = "0.1.0";
 static constexpr int DEFAULT_DOMAIN_ID = 0;
 
 DdsAbstractServiceBusConnection::DdsAbstractServiceBusConnection(const std::string& serviceLabel)
-    : serviceLabel_(serviceLabel)
-    , participant_(::dds::domain::DomainParticipant(DEFAULT_DOMAIN_ID))
+    : DdsAbstractServiceBusConnection(arcal::config::resolveCalIdentity(serviceLabel))
+{
+}
+
+DdsAbstractServiceBusConnection::DdsAbstractServiceBusConnection(arcal::config::CalIdentity identity)
+    : participant_(::dds::domain::DomainParticipant(DEFAULT_DOMAIN_ID))
 {
     transitionState(StateEnum::INITIALIZING, "Starting up");
 
-    // Deterministic UUIDs from service label
-    systemUUID_  = uci::base::UUID::createVersion3UUID(uci::base::UUID::getNamespaceUUID(), "system");
-    serviceUUID_ = uci::base::UUID::createVersion3UUID(uci::base::UUID::getNamespaceUUID(), serviceLabel_);
+    configuredIdentity_ = identity.configured;
+    systemLabel_ = std::move(identity.systemLabel);
+    serviceLabel_ = std::move(identity.serviceLabel);
+    systemUUID_ = identity.systemUUID;
+    serviceUUID_ = identity.serviceUUID;
+    subsystemUUID_ = identity.subsystemUUID;
+    componentUUIDs_ = std::move(identity.componentUUIDs);
+    capabilityUUIDs_ = std::move(identity.capabilityUUIDs);
 
     transitionState(StateEnum::NORMAL, "Ready");
 
@@ -49,19 +59,33 @@ void DdsAbstractServiceBusConnection::shutdown() {
     participant_.close();
 }
 
-std::string DdsAbstractServiceBusConnection::getMySystemLabel() const { return serviceLabel_; }
+std::string DdsAbstractServiceBusConnection::getMySystemLabel() const { return systemLabel_; }
 uci::base::UUID DdsAbstractServiceBusConnection::getMySystemUUID()   const { return systemUUID_; }
 uci::base::UUID DdsAbstractServiceBusConnection::getMyServiceUUID()  const { return serviceUUID_; }
 
 uci::base::UUID DdsAbstractServiceBusConnection::getMySubsystemUUID() const {
-    return uci::base::UUID::createVersion3UUID(serviceUUID_, "subsystem");
+    return subsystemUUID_;
 }
 
 uci::base::UUID DdsAbstractServiceBusConnection::getMyComponentUUID(const std::string& name) const {
+    if (configuredIdentity_) {
+        auto it = componentUUIDs_.find(name);
+        if (it == componentUUIDs_.end()) {
+            throwUciException("CAL config: component '" << name << "' is not configured in system '" << systemLabel_ << "'");
+        }
+        return it->second;
+    }
     return uci::base::UUID::createVersion3UUID(serviceUUID_, "component:" + name);
 }
 
 uci::base::UUID DdsAbstractServiceBusConnection::getMyCapabilityUUID(const std::string& name) const {
+    if (configuredIdentity_) {
+        auto it = capabilityUUIDs_.find(name);
+        if (it == capabilityUUIDs_.end()) {
+            throwUciException("CAL config: capability '" << name << "' is not configured in system '" << systemLabel_ << "'");
+        }
+        return it->second;
+    }
     return uci::base::UUID::createVersion3UUID(serviceUUID_, "capability:" + name);
 }
 

@@ -45,7 +45,7 @@ The OMS standard defines the CAL as a transport-agnostic pub/sub API that decoup
 | Jinja2 | (via uv) | Code generation templates |
 | CycloneDDS C library | 0.10.5 | DDS core |
 | CycloneDDS-CXX binding | 0.10.5 | C++ DDS API + `idlc` IDL compiler |
-| nlohmann_json | ≥ 3.12.0 | Bidirectional JSON Externalizer parser |
+| nlohmann_json | ≥ 3.12.0 | CAL config parser and bidirectional JSON Externalizer parser |
 
 > **Use clang-20 when available.** The generated CDR codec is large, and clang generally compiles it faster with lower peak memory use than GCC in this project.
 
@@ -194,6 +194,85 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH=/tmp/arcal-install
 ```
 
 ## Configuration and use
+
+### CAL identity configuration
+
+`uci_getAbstractServiceBusConnection()` resolves the service name passed by the
+application through ARCAL's CAL config. By default, ARCAL does not silently
+invent system or service identities. Set `ARCAL_CONFIG` before constructing an
+ASBC:
+
+```bash
+export ARCAL_CONFIG=/path/to/arcal-config.json
+```
+
+For local development, tests, and intentionally config-less experiments, opt
+out explicitly:
+
+```bash
+export ARCAL_CONFIG=NONE
+```
+
+`ARCAL_CONFIG=NONE` preserves ARCAL's deterministic UUID fallback. It is not
+the default, because accidentally running without the deployed CAL identity
+configuration can make a service appear to be a different system/service than
+intended.
+
+The current JSON format is:
+
+```json
+{
+  "systems": [
+    {
+      "name": "IntegrationRig",
+      "uuid": "11111111-1111-4111-8111-111111111111",
+      "components": [
+        { "name": "SystemComponent", "uuid": "22222222-2222-4222-8222-222222222222" }
+      ],
+      "capabilities": [
+        { "name": "SystemCapability", "uuid": "33333333-3333-4333-8333-333333333333" }
+      ],
+      "subsystems": [
+        {
+          "name": "Payload",
+          "uuid": "44444444-4444-4444-8444-444444444444",
+          "services": [
+            { "name": "Planner", "uuid": "55555555-5555-4555-8555-555555555555" }
+          ],
+          "components": [
+            { "name": "RadarComponent", "uuid": "66666666-6666-4666-8666-666666666666" }
+          ],
+          "capabilities": [
+            { "name": "DetectCapability", "uuid": "77777777-7777-4777-8777-777777777777" }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+If the config contains exactly one system, ARCAL selects it automatically. If it
+contains multiple systems, select the active system explicitly:
+
+```bash
+export ARCAL_SYSTEM=IntegrationRig
+```
+
+Configured mode is strict:
+
+- unknown service names are rejected during ASBC construction
+- service names must be unique within the selected system
+- duplicate subsystem, component, or capability names in the selected system
+  are rejected
+- system, service, subsystem, component, and capability UUIDs come from config
+- missing, unreadable, or malformed config is an initialization error
+
+Services may be listed directly under a system or under a subsystem. Services
+under a subsystem use that subsystem's UUID for `getMySubsystemUUID()`.
+System-level services currently have no associated subsystem UUID, so prefer
+placing services under a subsystem when application code uses
+`getMySubsystemUUID()`.
 
 ### Obtaining a CAL connection
 

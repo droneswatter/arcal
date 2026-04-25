@@ -35,3 +35,6 @@ add_custom_target(arcal_conformance ALL
 )
 
 add_test(NAME CONFORM-client-link COMMAND arcal_conform_client_link)
+set_tests_properties(CONFORM-client-link PROPERTIES
+    ENVIRONMENT "ARCAL_CONFIG=NONE"
+)

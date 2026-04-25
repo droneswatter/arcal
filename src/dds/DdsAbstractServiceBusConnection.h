@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config/CalConfig.h"
 #include "uci/base/AbstractServiceBusConnection.h"
 
 #include <dds/dds.hpp>
@@ -9,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -46,12 +48,19 @@ public:
     void registerExternalizer(uci::base::Externalizer& ext) override;
 
 private:
+    explicit DdsAbstractServiceBusConnection(arcal::config::CalIdentity identity);
+
     void transitionState(StateEnum newState, const std::string& detail = "");
     void monitorLoop();
 
+    bool                                configuredIdentity_{false};
+    std::string                         systemLabel_;
     std::string                         serviceLabel_;
     uci::base::UUID                     systemUUID_;
     uci::base::UUID                     serviceUUID_;
+    uci::base::UUID                     subsystemUUID_;
+    std::unordered_map<std::string, uci::base::UUID> componentUUIDs_;
+    std::unordered_map<std::string, uci::base::UUID> capabilityUUIDs_;
     uci::base::Externalizer*            externalizer_{nullptr};
 
     ::dds::domain::DomainParticipant    participant_;
