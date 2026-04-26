@@ -118,6 +118,17 @@ PRIMITIVE_ACCESSOR_TYPE_MAP: dict[str, str] = {
     "NMTOKEN":      "uci::base::accessorType::ACCESSOR_TYPE_STRING",
 }
 
+SCALAR_PRIMITIVE_TYPES = {
+    "boolean", "byte", "short", "int", "long",
+    "float", "double", "unsignedByte", "unsignedShort",
+    "unsignedInt", "unsignedLong", "integer", "decimal",
+}
+
+TEXT_PRIMITIVE_TYPES = {
+    "string", "anyURI", "dateTime", "dateTimeStamp",
+    "date", "time", "duration", "ID", "IDREF", "NMTOKEN",
+}
+
 
 class FieldModel:
     def __init__(self, name, type_name, optional=False, list_kind=None,
@@ -134,6 +145,11 @@ class FieldModel:
         self.accessor_type = "uci::base::accessorType::ACCESSOR_TYPE_COMPLEX"  # resolved later
         self.type_is_abstract = False
         self.type_is_generated = False
+        self.type_is_enum = False
+        self.type_is_string_restriction = False
+        self.type_is_complex = False
+        self.is_scalar_primitive = type_name in SCALAR_PRIMITIVE_TYPES
+        self.is_text_primitive = type_name in TEXT_PRIMITIVE_TYPES
         self.storage_cxx_type = self.cxx_type
         self.is_uuid = type_name == UUID_TYPE_NAME
 
@@ -346,6 +362,13 @@ class SchemaParser:
                 field.accessor_type = self._get_accessor_type(field.type_name)
                 field.is_uuid = field.type_name == UUID_TYPE_NAME
                 field.type_is_generated = field.type_name in self.types and not field.is_uuid
+                field.type_is_enum = field.type_name in self.types and self.types[field.type_name].is_enum
+                field.type_is_string_restriction = (
+                    field.type_name in self.types and self.types[field.type_name].is_string_restriction
+                )
+                field.type_is_complex = field.type_name in self.types and not (
+                    self.types[field.type_name].is_enum or self.types[field.type_name].is_string_restriction
+                )
                 if field.type_is_generated:
                     field.storage_cxx_type = f"{field.cxx_type}Impl"
             for choice in type_model.choices:
@@ -353,6 +376,13 @@ class SchemaParser:
                     v.accessor_type = self._get_accessor_type(v.type_name)
                     v.is_uuid = v.type_name == UUID_TYPE_NAME
                     v.type_is_generated = v.type_name in self.types and not v.is_uuid
+                    v.type_is_enum = v.type_name in self.types and self.types[v.type_name].is_enum
+                    v.type_is_string_restriction = (
+                        v.type_name in self.types and self.types[v.type_name].is_string_restriction
+                    )
+                    v.type_is_complex = v.type_name in self.types and not (
+                        self.types[v.type_name].is_enum or self.types[v.type_name].is_string_restriction
+                    )
                     if v.type_is_generated:
                         v.storage_cxx_type = f"{v.cxx_type}Impl"
 
@@ -539,9 +569,9 @@ public:
         return kName;
     }
     virtual void copy(const {{ type.cxx_name }}& rhs) = 0;
-    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb);
+    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb = nullptr);
     static {{ type.cxx_name }}& create(const {{ type.cxx_name }}& rhs,
-                                       uci::base::AbstractServiceBusConnection* asb);
+                                       uci::base::AbstractServiceBusConnection* asb = nullptr);
     static void destroy({{ type.cxx_name }}& accessor);
 {% if global_element %}\
 
@@ -602,14 +632,43 @@ public:
     virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) = 0;
 {% elif field.optional %}\
     virtual bool has{{ field.cxx_name }}() const = 0;
+{% if field.type_is_complex %}\
+    virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& enable{{ field.cxx_name }}(uci::base::accessorType::AccessorType accessorType = uci::base::accessorType::null) = 0;
+{% else %}\
     virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& enable{{ field.cxx_name }}() = 0;
-    virtual void clear{{ field.cxx_name }}() = 0;
+{% endif %}\
+    virtual {{ type.cxx_name }}& clear{{ field.cxx_name }}() = 0;
     virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() = 0;
     virtual const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const = 0;
+{% if not field.type_is_complex %}\
+{% if field.type_is_enum %}\
+    virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(typename {{ field.cxx_type | qualify(primitive_types, field.type_name) }}::EnumerationItem v) = 0;
+    {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) { return set{{ field.cxx_name }}(v.getValue()); }
+{% else %}\
+    virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) = 0;
+{% if field.is_text_primitive %}\
+    {{ type.cxx_name }}& set{{ field.cxx_name }}(const char* v) { return set{{ field.cxx_name }}(std::string{v ? v : ""}); }
+{% endif %}\
+{% endif %}\
+{% endif %}\
+{% else %}\
+{% if field.is_scalar_primitive %}\
+    virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() = 0;
+    virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }} get{{ field.cxx_name }}() const = 0;
+    virtual {{ type.cxx_name }}& set{{ field.cxx_name }}({{ field.cxx_type | qualify(primitive_types, field.type_name) }} v) = 0;
+{% elif field.type_is_enum %}\
+    virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() = 0;
+    virtual const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const = 0;
+    virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(typename {{ field.cxx_type | qualify(primitive_types, field.type_name) }}::EnumerationItem v) = 0;
+    {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) { return set{{ field.cxx_name }}(v.getValue()); }
 {% else %}\
     virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() = 0;
     virtual const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const = 0;
-    virtual void set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) = 0;
+    virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) = 0;
+{% if field.is_text_primitive %}\
+    {{ type.cxx_name }}& set{{ field.cxx_name }}(const char* v) { return set{{ field.cxx_name }}(std::string{v ? v : ""}); }
+{% endif %}\
+{% endif %}\
 {% endif %}\
 {% endfor %}\
 
@@ -739,17 +798,52 @@ public:
     UciType& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) override { {{ field.name }}_ = v; return *this; }
 {% elif field.optional %}\
     bool has{{ field.cxx_name }}() const override { return has{{ field.cxx_name }}_; }
+{% if field.type_is_complex %}\
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& enable{{ field.cxx_name }}(uci::base::accessorType::AccessorType) override { has{{ field.cxx_name }}_ = true; return {{ field.name }}_; }
+{% else %}\
     {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& enable{{ field.cxx_name }}() override { has{{ field.cxx_name }}_ = true; return {{ field.name }}_; }
-    void clear{{ field.cxx_name }}() override { has{{ field.cxx_name }}_ = false; }
+{% endif %}\
+    UciType& clear{{ field.cxx_name }}() override { has{{ field.cxx_name }}_ = false; return *this; }
     {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() override { return {{ field.name }}_; }
     const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const override { return {{ field.name }}_; }
+{% if not field.type_is_complex %}\
+{% if field.type_is_enum %}\
+    UciType& set{{ field.cxx_name }}(typename {{ field.cxx_type | qualify(primitive_types, field.type_name) }}::EnumerationItem v) override {
+        has{{ field.cxx_name }}_ = true;
+        {{ field.name }}_.setValue(v);
+        return *this;
+    }
+{% elif field.type_is_generated %}\
+    UciType& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) override {
+        has{{ field.cxx_name }}_ = true;
+        {{ field.name }}_.copy(v);
+        return *this;
+    }
+{% else %}\
+    UciType& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) override {
+        has{{ field.cxx_name }}_ = true;
+        {{ field.name }}_ = v;
+        return *this;
+    }
+{% endif %}\
+{% endif %}\
+{% else %}\
+{% if field.is_scalar_primitive %}\
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() override { return {{ field.name }}_; }
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }} get{{ field.cxx_name }}() const override { return {{ field.name }}_; }
+    UciType& set{{ field.cxx_name }}({{ field.cxx_type | qualify(primitive_types, field.type_name) }} v) override { {{ field.name }}_ = v; return *this; }
+{% elif field.type_is_enum %}\
+    {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() override { return {{ field.name }}_; }
+    const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const override { return {{ field.name }}_; }
+    UciType& set{{ field.cxx_name }}(typename {{ field.cxx_type | qualify(primitive_types, field.type_name) }}::EnumerationItem v) override { {{ field.name }}_.setValue(v); return *this; }
 {% else %}\
     {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() override { return {{ field.name }}_; }
     const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const override { return {{ field.name }}_; }
 {% if field.type_is_generated %}\
-    void set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) override { {{ field.name }}_.copy(v); }
+    UciType& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) override { {{ field.name }}_.copy(v); return *this; }
 {% else %}\
-    void set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) override { {{ field.name }}_ = v; }
+    UciType& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) override { {{ field.name }}_ = v; return *this; }
+{% endif %}\
 {% endif %}\
 {% endif %}\
 {% endfor %}\
@@ -820,9 +914,9 @@ public:
     }
 
     virtual void copy(const {{ type.cxx_name }}& rhs) = 0;
-    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb);
+    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb = nullptr);
     static {{ type.cxx_name }}& create(const {{ type.cxx_name }}& rhs,
-                                       uci::base::AbstractServiceBusConnection* asb);
+                                       uci::base::AbstractServiceBusConnection* asb = nullptr);
     static void destroy({{ type.cxx_name }}& accessor);
 
     virtual void setValue(EnumerationItem v) = 0;
@@ -963,9 +1057,9 @@ public:
     }
 
     virtual void copy(const {{ type.cxx_name }}& rhs) = 0;
-    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb);
+    static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb = nullptr);
     static {{ type.cxx_name }}& create(const {{ type.cxx_name }}& rhs,
-                                       uci::base::AbstractServiceBusConnection* asb);
+                                       uci::base::AbstractServiceBusConnection* asb = nullptr);
     static void destroy({{ type.cxx_name }}& accessor);
 
     virtual const {{ type.base_type }}& getValue() const = 0;
