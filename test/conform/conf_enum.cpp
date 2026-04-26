@@ -29,8 +29,6 @@ static_assert(!std::is_constructible_v<E>,
     "generated enum accessors must not be publicly default-constructible");
 static_assert(!std::is_copy_constructible_v<E>,
     "generated enum accessors must not be publicly copy-constructible");
-static_assert(!std::is_assignable_v<E&, const E&>,
-    "generated enum accessors must not be publicly assignable");
 static_assert(!std::is_destructible_v<E>,
     "generated enum accessors must not be publicly destructible");
 

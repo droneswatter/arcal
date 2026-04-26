@@ -920,9 +920,9 @@ public:
     static void destroy({{ type.cxx_name }}& accessor);
 
     virtual void setValue(EnumerationItem v) = 0;
-    virtual EnumerationItem getValue() const = 0;
+    virtual EnumerationItem getValue(bool testForValidity = true) const = 0;
 
-    static int getNumberOfItems() { return {{ type.enum_values | length }}; }
+    int getNumberOfItems() const { return {{ type.enum_values | length }}; }
 
     bool isValid() const { return isValid(getValue()); }
     static bool isValid(EnumerationItem v) { return v > enumNotSet && v < enumMaxExclusive; }
@@ -932,25 +932,26 @@ public:
             "{{ v }}",
 {% endfor %}\
         };
-        for (int i = 0; i < getNumberOfItems(); ++i) {
+        constexpr int total = {{ type.enum_values | length }};
+        for (int i = 0; i < total; ++i) {
             if (name == names[i]) return true;
         }
         return false;
     }
 
-    std::string toName() const {
+    static std::string toName(EnumerationItem v) {
         static const char* names[] = {
             "enumNotSet",
 {% for v in type.enum_values %}\
             "{{ v }}",
 {% endfor %}\
         };
-        const auto value = getValue();
-        if (value < 0 || value >= enumMaxExclusive) return "invalid";
-        return names[static_cast<int>(value)];
+        if (v < 0 || v >= enumMaxExclusive) return "invalid";
+        return names[static_cast<int>(v)];
     }
+    std::string toName() const { return toName(getValue()); }
 
-    static EnumerationItem valueFromName(const std::string& name) {
+    static EnumerationItem fromName(const std::string& name) {
         static const char* names[] = {
             "enumNotSet",
 {% for v in type.enum_values %}\
@@ -965,8 +966,10 @@ public:
         }
         throw std::invalid_argument("{{ type.cxx_name }}::fromName: unknown value: " + name);
     }
+    void setValueFromName(const std::string& name) { setValue(fromName(name)); }
 
-    void setValueFromName(const std::string& name) { setValue(valueFromName(name)); }
+    {{ type.cxx_name }}& operator=(const {{ type.cxx_name }}& rhs) { copy(rhs); return *this; }
+    {{ type.cxx_name }}& operator=(EnumerationItem v) { setValue(v); return *this; }
 
     bool operator==(const {{ type.cxx_name }}& rhs) const { return getValue() == rhs.getValue(); }
     bool operator!=(const {{ type.cxx_name }}& rhs) const { return getValue() != rhs.getValue(); }
@@ -977,15 +980,28 @@ public:
 
     bool operator==(EnumerationItem rhs) const { return getValue() == rhs; }
     bool operator!=(EnumerationItem rhs) const { return getValue() != rhs; }
+    bool operator<(EnumerationItem rhs)  const { return getValue() <  rhs; }
+    bool operator<=(EnumerationItem rhs) const { return getValue() <= rhs; }
+    bool operator>(EnumerationItem rhs)  const { return getValue() >  rhs; }
+    bool operator>=(EnumerationItem rhs) const { return getValue() >= rhs; }
 
-    friend std::ostream& operator<<(std::ostream& os, const {{ type.cxx_name }}& rhs) {
-        return os << rhs.toName();
+    friend bool operator==(EnumerationItem lhs, const {{ type.cxx_name }}& rhs) { return rhs == lhs; }
+    friend bool operator!=(EnumerationItem lhs, const {{ type.cxx_name }}& rhs) { return rhs != lhs; }
+    friend bool operator<(EnumerationItem lhs,  const {{ type.cxx_name }}& rhs) { return rhs >  lhs; }
+    friend bool operator<=(EnumerationItem lhs, const {{ type.cxx_name }}& rhs) { return rhs >= lhs; }
+    friend bool operator>(EnumerationItem lhs,  const {{ type.cxx_name }}& rhs) { return rhs <  lhs; }
+    friend bool operator>=(EnumerationItem lhs, const {{ type.cxx_name }}& rhs) { return rhs <= lhs; }
+
+    template<typename charT, typename traits>
+    friend std::basic_ostream<charT,traits>& operator<<(
+            std::basic_ostream<charT,traits>& os, const {{ type.cxx_name }}& rhs) {
+        for (const char c : rhs.toName()) os.put(os.widen(c));
+        return os;
     }
 
 protected:
     {{ type.cxx_name }}() = default;
     {{ type.cxx_name }}(const {{ type.cxx_name }}&) = default;
-    {{ type.cxx_name }}& operator=(const {{ type.cxx_name }}&) = default;
     ~{{ type.cxx_name }}() override = default;
 };
 
@@ -1018,7 +1034,7 @@ public:
     void reset() override { value_ = UciType::enumNotSet; }
     void copy(const UciType& rhs) override { value_ = rhs.getValue(); }
     void setValue(EnumerationItem v) override { value_ = v; }
-    EnumerationItem getValue() const override { return value_; }
+    EnumerationItem getValue(bool = true) const override { return value_; }
 
 private:
     EnumerationItem value_{UciType::enumNotSet};
