@@ -26,6 +26,7 @@ option(ARCAL_BUILD_TESTS         "Build CERT test suite"  ON)
 option(ARCAL_BUILD_E2E_TESTS     "Build E2E smoke tests"  ON)
 option(ARCAL_BUILD_INSTALL_TESTS "Build install smoke tests" ON)
 option(ARCAL_BUILD_EXAMPLES      "Build optional example applications" OFF)
+set(ARCAL_SUBSET_CONFIGS "" CACHE STRING "Semicolon-separated subset CAL config JSON files to build as additional libraries")
 
 if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS OR ARCAL_BUILD_INSTALL_TESTS)
     enable_testing()
@@ -97,6 +98,236 @@ add_custom_command(
 )
 
 add_custom_target(arcal_generated DEPENDS ${SCHEMA_STAMP})
+
+function(arcal_add_subset subset_config_path)
+    get_filename_component(subset_config_abs "${subset_config_path}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+    if(NOT EXISTS "${subset_config_abs}")
+        message(FATAL_ERROR "ARCAL subset config not found: ${subset_config_path}")
+    endif()
+
+    file(READ "${subset_config_abs}" subset_config_json)
+    string(JSON subset_suffix ERROR_VARIABLE subset_suffix_error GET "${subset_config_json}" cal_name_suffix)
+    if(subset_suffix_error)
+        message(FATAL_ERROR "Failed to read cal_name_suffix from ${subset_config_abs}: ${subset_suffix_error}")
+    endif()
+
+    set(subset_name "arcal-${subset_suffix}")
+    string(MAKE_C_IDENTIFIER "${subset_name}" subset_target_base)
+    set(subset_root "${CMAKE_BINARY_DIR}/subsets/${subset_name}")
+    set(subset_include_dir "${subset_root}/include")
+    set(subset_generated_dir "${subset_root}/src/generated")
+    set(subset_json_dir "${subset_generated_dir}/json")
+    set(subset_stamp "${subset_root}/schema_compiler.stamp")
+    set(subset_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/${subset_name}")
+
+    file(MAKE_DIRECTORY "${subset_include_dir}")
+
+    execute_process(
+        COMMAND uv run python3
+                ${CMAKE_SOURCE_DIR}/tools/schema_compiler/compiler.py
+                --schema ${SCHEMA_DIR}
+                --out ${subset_include_dir}
+                --subset-config ${subset_config_abs}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        RESULT_VARIABLE subset_generate_result
+    )
+    if(NOT subset_generate_result EQUAL 0)
+        message(FATAL_ERROR "Subset schema generation failed for ${subset_name}")
+    endif()
+
+    file(GLOB_RECURSE subset_cdr_generated_sources
+        ${subset_generated_dir}/*_cdr.cpp
+        ${subset_generated_dir}/cdr_register_all.cpp
+    )
+    file(GLOB_RECURSE subset_json_generated_sources
+        ${subset_json_dir}/*_json.cpp
+        ${subset_json_dir}/json_register_all.cpp
+    )
+
+    if(NOT subset_cdr_generated_sources)
+        message(FATAL_ERROR "Subset ${subset_name} produced no CDR generated sources")
+    endif()
+    if(NOT subset_json_generated_sources)
+        message(FATAL_ERROR "Subset ${subset_name} produced no JSON generated sources")
+    endif()
+
+    add_custom_command(
+        OUTPUT ${subset_stamp}
+        COMMAND uv run python3
+                ${CMAKE_SOURCE_DIR}/tools/schema_compiler/compiler.py
+                --schema ${SCHEMA_DIR}
+                --out ${subset_include_dir}
+                --subset-config ${subset_config_abs}
+        COMMAND ${CMAKE_COMMAND} -E touch ${subset_stamp}
+        DEPENDS ${XSD_FILES}
+                ${CMAKE_SOURCE_DIR}/tools/schema_compiler/compiler.py
+                ${subset_config_abs}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Running subset schema compiler for ${subset_name}..."
+        VERBATIM
+    )
+
+    add_custom_target(${subset_target_base}_generated DEPENDS ${subset_stamp})
+
+    set_source_files_properties(
+        ${subset_generated_dir}/cdr_register_all.cpp
+        ${subset_generated_dir}/factories_all.cpp
+        ${subset_generated_dir}/accessor_factory_all.cpp
+        ${subset_generated_dir}/type_lifecycle_all.cpp
+        ${subset_json_dir}/json_register_all.cpp
+        PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
+    )
+
+    add_library(${subset_target_base}_cdr_objects OBJECT
+        externalizer/cdr/CdrExternalizer.cpp
+        externalizer/cdr/ExternalizerLoader.cpp
+        ${subset_cdr_generated_sources}
+    )
+
+    add_dependencies(${subset_target_base}_cdr_objects ${subset_target_base}_generated)
+
+    target_include_directories(${subset_target_base}_cdr_objects PRIVATE
+        ${subset_include_dir}
+        ${subset_root}/src
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/externalizer/cdr
+    )
+
+    set_target_properties(${subset_target_base}_cdr_objects PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
+    )
+
+    target_precompile_headers(${subset_target_base}_cdr_objects PRIVATE
+        "${CMAKE_SOURCE_DIR}/externalizer/cdr/CdrPrimitives.h"
+        "${CMAKE_SOURCE_DIR}/externalizer/cdr/CdrRegistry.h"
+        "${CMAKE_SOURCE_DIR}/include/uci/base/BoundedList.h"
+        "${CMAKE_SOURCE_DIR}/include/uci/base/SimpleList.h"
+    )
+
+    target_compile_options(${subset_target_base}_cdr_objects PRIVATE -g1 -pipe)
+
+    add_library(${subset_target_base} SHARED
+        src/config/CalConfig.cpp
+        src/UUID.cpp
+        src/dds/CdrBridge.cpp
+        src/dds/DdsAbstractServiceBusConnection.cpp
+        src/dds/DdsReaderCore.cpp
+        src/dds/DdsWriterCore.cpp
+        src/dds/arcal_payload.c
+        src/dds/arcal_payload.cpp
+        ${subset_generated_dir}/type_lifecycle_all.cpp
+        ${subset_generated_dir}/factories_all.cpp
+        ${subset_generated_dir}/accessor_factory_all.cpp
+        src/ExternalizerLoader.cpp
+        $<TARGET_OBJECTS:${subset_target_base}_cdr_objects>
+    )
+
+    add_dependencies(${subset_target_base} ${subset_target_base}_generated arcal_idl)
+
+    target_compile_definitions(${subset_target_base} PRIVATE
+        ARCAL_JSON_PLUGIN_SONAME=\"lib${subset_name}_externalizer_json.so\"
+    )
+
+    target_include_directories(${subset_target_base} PUBLIC
+        $<BUILD_INTERFACE:${subset_include_dir}>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/${subset_name}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+        $<BUILD_INTERFACE:${subset_root}/src>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+    )
+
+    set_target_properties(${subset_target_base} PROPERTIES
+        OUTPUT_NAME ${subset_name}
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
+        INSTALL_RPATH "$ORIGIN"
+    )
+
+    target_link_libraries(${subset_target_base} PUBLIC CycloneDDS-CXX::ddscxx PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS})
+
+    add_library(${subset_target_base}_externalizer_json SHARED
+        externalizer/json/JsonExternalizer.cpp
+        externalizer/json/ExternalizerLoader.cpp
+        ${subset_json_generated_sources}
+    )
+
+    target_include_directories(${subset_target_base}_externalizer_json PUBLIC
+        $<BUILD_INTERFACE:${subset_include_dir}>
+        $<BUILD_INTERFACE:${subset_root}/src>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/externalizer/json>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/${subset_name}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/arcal/externalizer/json>
+    )
+
+    set_target_properties(${subset_target_base}_externalizer_json PROPERTIES
+        OUTPUT_NAME ${subset_name}_externalizer_json
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        INSTALL_RPATH "$ORIGIN"
+    )
+
+    target_precompile_headers(${subset_target_base}_externalizer_json PRIVATE
+        "${CMAKE_SOURCE_DIR}/externalizer/json/JsonPrimitives.h"
+        "${CMAKE_SOURCE_DIR}/externalizer/json/JsonParse.h"
+        "${CMAKE_SOURCE_DIR}/externalizer/json/JsonRegistry.h"
+        "${CMAKE_SOURCE_DIR}/include/uci/base/BoundedList.h"
+        "${CMAKE_SOURCE_DIR}/include/uci/base/SimpleList.h"
+    )
+
+    target_compile_options(${subset_target_base}_externalizer_json PRIVATE -g1 -pipe)
+    target_link_libraries(${subset_target_base}_externalizer_json PRIVATE ${subset_target_base} nlohmann_json::nlohmann_json)
+
+    install(TARGETS ${subset_target_base} ${subset_target_base}_externalizer_json
+        EXPORT ${subset_target_base}Targets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+
+    install(
+        DIRECTORY ${subset_include_dir}/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${subset_name}
+    )
+
+    set(ARCAL_SUBSET_TARGETS_FILE "${subset_name}Targets.cmake")
+    configure_package_config_file(
+        ${CMAKE_SOURCE_DIR}/cmake/arcalSubsetConfig.cmake.in
+        ${CMAKE_BINARY_DIR}/${subset_name}Config.cmake
+        INSTALL_DESTINATION ${subset_package_dir}
+    )
+
+    write_basic_package_version_file(
+        ${CMAKE_BINARY_DIR}/${subset_name}ConfigVersion.cmake
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+    )
+
+    install(
+        EXPORT ${subset_target_base}Targets
+        FILE ${subset_name}Targets.cmake
+        NAMESPACE ${subset_target_base}::
+        DESTINATION ${subset_package_dir}
+    )
+
+    install(
+        FILES
+            ${CMAKE_BINARY_DIR}/${subset_name}Config.cmake
+            ${CMAKE_BINARY_DIR}/${subset_name}ConfigVersion.cmake
+        DESTINATION ${subset_package_dir}
+    )
+endfunction()
 
 # ---------------------------------------------------------------------------
 # Core library
@@ -192,6 +423,10 @@ endif()
 
 add_subdirectory(externalizer/json)
 
+foreach(subset_config IN LISTS ARCAL_SUBSET_CONFIGS)
+    arcal_add_subset("${subset_config}")
+endforeach()
+
 # ---------------------------------------------------------------------------
 # Language-Agnostic CAL server
 # ---------------------------------------------------------------------------
@@ -223,7 +458,9 @@ if(ARCAL_BUILD_TESTS)
 endif()
 
 if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
-    set(ARCAL_CERT_CAL_LIB          "arcal"                  CACHE STRING "" FORCE)
+    if(NOT DEFINED ARCAL_CERT_CAL_LIB OR ARCAL_CERT_CAL_LIB STREQUAL "")
+        set(ARCAL_CERT_CAL_LIB "arcal" CACHE STRING "")
+    endif()
     set(ARCAL_CERT_BUILD_CERT       ${ARCAL_BUILD_TESTS}     CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_BUILD_E2E        ${ARCAL_BUILD_E2E_TESTS} CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_TEST_ENV

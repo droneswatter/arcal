@@ -1,0 +1,10 @@
+{
+  "cal_name_suffix": "simple",
+  "message_types": [
+    "AMTI_Capability",
+    "AMTI_CapabilityStatus",
+    "AMTI_Command",
+    "AMTI_CommandStatus",
+    "AMTI_Activity"
+  ]
+}

@@ -175,6 +175,40 @@ class GlobalElementModel:
         self.cxx_type = xsd_name_to_cxx(type_name)
 
 
+class SubsetConfig:
+    def __init__(self, cal_name_suffix: str, message_types: list[str], accessor_types: list[str]):
+        self.cal_name_suffix = cal_name_suffix
+        self.message_types = message_types
+        self.accessor_types = accessor_types
+
+    @staticmethod
+    def load(path: Path) -> "SubsetConfig":
+        with open(path) as f:
+            raw = json.load(f)
+
+        cal_name_suffix = raw.get("cal_name_suffix")
+        if not isinstance(cal_name_suffix, str) or not cal_name_suffix.strip():
+            raise ValueError("subset config must contain non-empty string field 'cal_name_suffix'")
+
+        message_types = raw.get("message_types")
+        if not isinstance(message_types, list) or not message_types:
+            raise ValueError("subset config must contain non-empty array field 'message_types'")
+        if not all(isinstance(item, str) and item.strip() for item in message_types):
+            raise ValueError("subset config field 'message_types' must contain only non-empty strings")
+
+        accessor_types = raw.get("accessor_types", [])
+        if not isinstance(accessor_types, list):
+            raise ValueError("subset config field 'accessor_types' must be an array when present")
+        if not all(isinstance(item, str) and item.strip() for item in accessor_types):
+            raise ValueError("subset config field 'accessor_types' must contain only non-empty strings")
+
+        return SubsetConfig(
+            cal_name_suffix=cal_name_suffix.strip(),
+            message_types=[item.strip() for item in message_types],
+            accessor_types=[item.strip() for item in accessor_types],
+        )
+
+
 # ---------------------------------------------------------------------------
 # XSD parser
 # ---------------------------------------------------------------------------
@@ -197,6 +231,101 @@ class SchemaParser:
 
         self._resolve_accessor_types()
         self._resolve_inheritance_metadata()
+
+    def select_subset(self, requested_message_types: list[str], requested_accessor_types: list[str]) -> tuple[list[GlobalElementModel], list[TypeModel]]:
+        selected_globals = self._resolve_global_elements(requested_message_types)
+        selected_type_roots = self._resolve_type_roots(requested_accessor_types)
+        required_type_names = self._collect_required_type_names(selected_globals, selected_type_roots)
+
+        filtered_globals = [elem for elem in self.global_elements if elem.name in {g.name for g in selected_globals}]
+        filtered_types = [type_model for name, type_model in self.types.items() if name in required_type_names]
+        return filtered_globals, filtered_types
+
+    def _resolve_global_elements(self, requested_message_types: list[str]) -> list[GlobalElementModel]:
+        lookup: dict[str, GlobalElementModel] = {}
+        for elem in self.global_elements:
+            for key in {elem.name, elem.cxx_name, elem.type_name, elem.cxx_type}:
+                lookup.setdefault(key, elem)
+
+        selected = []
+        seen_names = set()
+        missing = []
+        for requested in requested_message_types:
+            elem = lookup.get(requested)
+            if elem is None:
+                missing.append(requested)
+                continue
+            if elem.name not in seen_names:
+                seen_names.add(elem.name)
+                selected.append(elem)
+
+        if missing:
+            known = ", ".join(sorted(elem.name for elem in self.global_elements))
+            raise ValueError(
+                "unknown subset message type(s): "
+                + ", ".join(missing)
+                + "\nknown global element names include: "
+                + known
+            )
+
+        return selected
+
+    def _resolve_type_roots(self, requested_accessor_types: list[str]) -> list[str]:
+        lookup: dict[str, str] = {}
+        for name, type_model in self.types.items():
+            lookup.setdefault(name, name)
+            lookup.setdefault(type_model.cxx_name, name)
+
+        resolved = []
+        missing = []
+        for requested in requested_accessor_types:
+            resolved_name = lookup.get(requested)
+            if resolved_name is None:
+                missing.append(requested)
+                continue
+            if resolved_name not in resolved:
+                resolved.append(resolved_name)
+
+        if missing:
+            known = ", ".join(sorted(self.types.keys()))
+            raise ValueError(
+                "unknown subset accessor type(s): "
+                + ", ".join(missing)
+                + "\nknown accessor type names include: "
+                + known
+            )
+
+        return resolved
+
+    def _collect_required_type_names(self, selected_globals: list[GlobalElementModel], selected_type_roots: list[str]) -> set[str]:
+        required = set()
+        pending = [elem.type_name for elem in selected_globals]
+        pending.extend(selected_type_roots)
+
+        while pending:
+            type_name = pending.pop()
+            if type_name in required:
+                continue
+
+            type_model = self.types.get(type_name)
+            if type_model is None:
+                continue
+
+            required.add(type_name)
+
+            if type_model.base_type and type_model.base_type in self.types:
+                pending.append(type_model.base_type)
+
+            for field in type_model.fields:
+                if field.type_name in self.types:
+                    pending.append(field.type_name)
+
+            for choice in type_model.choices:
+                for variant in choice.variants:
+                    if variant.type_name in self.types:
+                        pending.append(variant.type_name)
+
+        return required
 
     def _get_accessor_type(self, type_name: str) -> str:
         if type_name == UUID_TYPE_NAME:
@@ -1647,6 +1776,7 @@ def main():
     parser.add_argument("--schema", required=True, type=Path)
     parser.add_argument("--out",    required=True, type=Path)
     parser.add_argument("--ns-map", type=Path, default=None)
+    parser.add_argument("--subset-config", type=Path, default=None)
     args = parser.parse_args()
 
     ns_map = load_ns_map(args.ns_map) if args.ns_map else dict(PROTECTED_NS_MAP)
@@ -1664,9 +1794,19 @@ def main():
     schema = SchemaParser(args.schema)
     schema.parse_all()
 
+    subset_config = SubsetConfig.load(args.subset_config) if args.subset_config else None
+
     # Build type_name → GlobalElementModel mapping for nested class injection
+    selected_global_elements = schema.global_elements
+    selected_type_models = list(schema.types.values())
+    if subset_config is not None:
+        selected_global_elements, selected_type_models = schema.select_subset(
+            subset_config.message_types,
+            subset_config.accessor_types,
+        )
+
     global_element_for_type: dict[str, GlobalElementModel] = {
-        elem.type_name: elem for elem in schema.global_elements
+        elem.type_name: elem for elem in selected_global_elements
     }
 
     uci_version = "2.5.0"
@@ -1674,7 +1814,8 @@ def main():
     cdr_generated = 0
 
     type_models = []
-    for name, type_model in schema.types.items():
+    for type_model in selected_type_models:
+        name = type_model.name
         ge = global_element_for_type.get(name)
         out_path = type_out_dir / f"{xsd_name_to_cxx(name)}.h"
         out_path.write_text(render_type(type_model, uci_version, global_element=ge))
@@ -1696,18 +1837,24 @@ def main():
     (json_out_dir / "json_register_all.cpp").write_text(render_json_register_all(type_models))
     (cdr_out_dir / "type_lifecycle_all.cpp").write_text(render_type_lifecycle(type_models))
 
-    for elem in schema.global_elements:
+    for elem in selected_global_elements:
         out_path = type_out_dir / f"{elem.cxx_name}.h"
         out_path.write_text(render_global_element(elem))
         generated += 1
 
-    (cdr_out_dir / "factories_all.cpp").write_text(render_factory_all(schema.global_elements))
-    (cdr_out_dir / "accessor_factory_all.cpp").write_text(render_accessor_factory(schema.global_elements))
+    (cdr_out_dir / "factories_all.cpp").write_text(render_factory_all(selected_global_elements))
+    (cdr_out_dir / "accessor_factory_all.cpp").write_text(render_accessor_factory(selected_global_elements))
 
     print(f"arcal schema compiler: generated {generated} headers → {type_out_dir}")
     print(f"arcal schema compiler: generated {cdr_generated} CDR handlers + register_all → {cdr_out_dir}")
     print(f"arcal schema compiler: generated {cdr_generated} JSON handlers + register_all → {json_out_dir}")
-    print(f"arcal schema compiler: generated factories_all.cpp ({len(schema.global_elements)} types) → {cdr_out_dir}")
+    print(f"arcal schema compiler: generated factories_all.cpp ({len(selected_global_elements)} types) → {cdr_out_dir}")
+    if subset_config is not None:
+        print(
+            "arcal schema compiler: subset "
+            f"arcal-{subset_config.cal_name_suffix} includes "
+            f"{len(selected_global_elements)} message type(s) and {len(selected_type_models)} dependent accessor type(s)"
+        )
 
 
 if __name__ == "__main__":

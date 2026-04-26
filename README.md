@@ -139,11 +139,98 @@ bash scripts/build.sh
 | `ARCAL_BUILD_EXAMPLES` | `OFF` | Build optional example applications |
 | `ARCAL_BUILD_LACAL` | `ON` | Build `arlacal-server`, the WebSocket/OWP language-agnostic CAL bridge |
 | `ARCAL_UNITY_BATCH_SIZE` | `25` | Source files per unity build batch; increase to reduce compile time at the cost of higher peak memory |
+| `ARCAL_SUBSET_CONFIGS` | empty | Semicolon-separated JSON subset configs that build additional installable CAL libraries such as `arcal-simple` |
 
 Example:
 ```bash
 cmake -S . -B build -DARCAL_UNITY_BATCH_SIZE=25 -G Ninja
 ```
+
+### Subset CALs
+
+Subset CALs let you build a smaller generated library from a selected set of
+message types without overwriting the main `arcal` generated tree. Each subset
+is generated under `build/subsets/<cal-name>/`, built as its own shared
+library, and installed with its own soname and CMake package.
+
+Subset config format:
+
+```json
+{
+  "cal_name_suffix": "simple",
+  "message_types": [
+    "AMTI_Capability",
+    "AMTI_CapabilityStatus",
+    "AMTI_Command",
+    "AMTI_CommandStatus",
+    "AMTI_Activity"
+  ],
+  "accessor_types": [
+    "ObjectStateEnum"
+  ]
+}
+```
+
+`message_types` is required. Entries may be OMS global element names such as
+`ActionCommand` or generated message accessor names such as `ActionCommandMT`.
+`accessor_types` is optional and is useful when a consumer directly includes
+non-message accessor headers that are not reachable from the chosen messages.
+
+Build the bundled sample subset:
+
+```bash
+cmake -S . -B build \
+  -DARCAL_SUBSET_CONFIGS=$PWD/config/subsets/arcal-simple.json \
+  -G Ninja
+cmake --build build --target arcal_simple arcal_simple_externalizer_json -j4
+```
+
+After installation, the subset installs alongside the main library as:
+
+```text
+libarcal-simple.so
+libarcal-simple_externalizer_json.so
+```
+
+and exports its own CMake package:
+
+```cmake
+find_package(arcal-simple REQUIRED)
+target_link_libraries(my_app PRIVATE arcal_simple::arcal_simple)
+```
+
+### Running arcal-cert with a subset CAL
+
+The bundled `config/subsets/arcal-busmon-cert.json` starts from the
+bus-monitor demo message flow (`ActionCommand`) and adds the extra accessor
+roots referenced directly by `arcal-cert` compile checks.
+
+Configure a dedicated build that points `arcal-cert` at the subset CAL target:
+
+```bash
+cmake -S . -B build-subset-cert \
+  -DCMAKE_CXX_COMPILER=clang++-20 \
+  -DCMAKE_C_COMPILER=clang-20 \
+  -DCMAKE_PREFIX_PATH="$HOME/.local" \
+  -DARCAL_BUILD_INSTALL_TESTS=OFF \
+  -DARCAL_BUILD_EXAMPLES=OFF \
+  -DARCAL_BUILD_LACAL=OFF \
+  -DARCAL_SUBSET_CONFIGS=$PWD/config/subsets/arcal-busmon-cert.json \
+  -DARCAL_CERT_CAL_LIB=arcal_busmon_cert \
+  -G Ninja
+```
+
+Build the subset CAL and the full `arcal-cert` suite against it:
+
+```bash
+cmake --build build-subset-cert --target arcal_cert_suite_all -j4
+ctest --test-dir build-subset-cert -R "^(CERT|E2E)-" --output-on-failure
+```
+
+If you want to exercise the runtime `CERT` and `E2E` coverage without the
+compile-only conformance checks, add `-DARCAL_CERT_BUILD_COMPILE=OFF` at
+configure time. This is useful while generator conformance work is still in
+progress.
 
 ### Cleaning generated code
 

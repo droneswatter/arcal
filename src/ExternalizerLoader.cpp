@@ -6,6 +6,10 @@
 #include <string>
 #include <unordered_map>
 
+#ifndef ARCAL_JSON_PLUGIN_SONAME
+#define ARCAL_JSON_PLUGIN_SONAME "libarcal_externalizer_json.so"
+#endif
+
 // ---------------------------------------------------------------------------
 // Hardcoded encoding → plugin soname map.
 // CDR is special-cased because it is built into libarcal.
@@ -14,7 +18,7 @@
 // ---------------------------------------------------------------------------
 
 static const std::unordered_map<std::string, const char*> PLUGIN_MAP = {
-    {"JSON", "libarcal_externalizer_json.so"},
+    {"JSON", ARCAL_JSON_PLUGIN_SONAME},
 };
 
 namespace arcal {
