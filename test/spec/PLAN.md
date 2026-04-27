@@ -264,11 +264,11 @@ optional — UUID is always present once the parent is created.
 
 ## TASK-007 — SimpleRestriction Type Headers (typedef pattern)
 **Status:** `done`
-**Test written:** `arcal/test/arcal-cert/compile/conf_simple_restriction.cpp` (Part B compiles today; Part A in `#if 0` for post-fix)
+**Test written:** `arcal/test/arcal-cert/compile/conf_simple_restriction.cpp`
 
-### Findings — FAIL (2 categories, 244 files total)
-- **V1 — Numeric restrictions generated as classes (CXX-006143/006144):** 38 files (e.g. `UnitBallDoubleType.h`, `UnitIntervalFloatType.h`) are full abstract classes instead of `typedef uci::base::DoubleAccessor UnitBallDoubleType`. No `<TypeName>Value` typedef generated either.
-- **V2 — String restrictions generated as classes (CXX-006553):** 206 files (e.g. `VisibleString256Type.h`) are full abstract classes instead of `typedef xs::String VisibleString256Type`. Secondary defect: string restriction types are mis-tagged `ACCESSOR_TYPE_SIMPLE_PRIMITIVE` instead of a string category.
+### Findings — PASS
+- **Numeric restrictions repaired (CXX-006143/006144):** scalar restrictions such as `UnitBallDoubleType` and `UnitIntervalFloatType` now generate typedef aliases to the corresponding `uci::base::*Accessor` plus companion `<TypeName>Value` aliases to `xs::*`.
+- **String restrictions repaired (CXX-006553):** string-like restrictions such as `VisibleString256Type` now generate typedef aliases to the corresponding `xs::*` primitive alias instead of accessor classes.
 **Spec:** §10946 "The SimpleRestriction Accessor"
 (CERT CXX-006143, CXX-006144, CXX-006553)
 
@@ -285,14 +285,6 @@ typedef xs::Double UnitBallDoubleTypeValue;             // CXX-006144
 // For xs:restriction/@base mapping to a String/Binary/List Primitive:
 typedef xs::String VisibleString256Type;                // CXX-006553
 ```
-
-### Known violation
-
-`UnitBallDoubleType.h`, `UnitIntervalFloatType.h`, and similar headers are
-**currently generated as full classes** rather than typedefs. This is a
-CXX-006143/CXX-006144 violation across all simple-restriction numeric types.
-The agent should confirm the scope and decide whether a compile-time
-`static_assert` test or a separate conformance note is appropriate.
 
 ### Files to check
 
