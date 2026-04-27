@@ -15,15 +15,13 @@ void exercise_utils_surface(uci::base::AbstractServiceBusConnection* asb)
     auto reader = uci::utils::makeReader<uci::type::ActionCommandMT>("ActionCommand", asb);
     auto writer = uci::utils::makeWriter<uci::type::ActionCommandMT>("ActionCommand", asb);
 
-    uci::utils::FunctionListener<uci::type::ActionCommandMT> listener(
+    uci::utils::MessageListener<uci::type::ActionCommandMT> listener(
         [](const uci::type::ActionCommandMT&) {});
     uci::utils::ScopedListener<uci::type::ActionCommandMT> scoped(reader.get(), listener);
 
-    const auto uuid = uci::utils::newUuid();
     (void)connection;
     (void)message;
     (void)writer;
-    (void)uuid;
 }
 
 static_assert(std::is_move_constructible_v<uci::utils::MessagePtr<uci::type::ActionCommandMT>>);

@@ -7,12 +7,12 @@ namespace uci {
 namespace utils {
 
 template <typename MT>
-class FunctionListener final : public MT::Listener {
+class MessageListener final : public MT::Listener {
 public:
     using Message = MT;
     using Callback = std::function<void(const MT&)>;
 
-    explicit FunctionListener(Callback callback)
+    explicit MessageListener(Callback callback)
         : callback_(std::move(callback)) {}
 
     void handleMessage(const MT& message) override {
@@ -50,11 +50,6 @@ private:
     Reader* reader_;
     Listener* listener_;
 };
-
-template <typename MT, typename Callback>
-FunctionListener<MT> makeListener(Callback&& callback) {
-    return FunctionListener<MT>(typename FunctionListener<MT>::Callback(std::forward<Callback>(callback)));
-}
 
 } // namespace utils
 } // namespace uci

@@ -43,14 +43,14 @@ void publishCapability(uci::base::AbstractServiceBusConnection* asb,
                        uci::utils::WriterPtr<uci::type::SMTI_CapabilityMT>& writer,
                        const uci::base::UUID& capabilityUuid) {
     auto message = uci::utils::makeMessage<uci::type::SMTI_CapabilityMT>(asb);
-    uci::utils::set(message->enableObjectState(), uci::type::ObjectStateEnum::NEW);
+    message->enableObjectState() = uci::type::ObjectStateEnum::NEW;
 
     auto& capabilities = message->getMessageData().getCapability();
     capabilities.resize(1);
     auto& capability = capabilities[0];
     uci::utils::setId(capability.getCapabilityID(), capabilityUuid, kCapabilityName);
-    uci::utils::set(capability.getCapabilityType(), uci::type::SMTI_CapabilityEnum::AREA);
-    uci::utils::set(capability.getSubCapabilityType(), uci::type::SMTI_SubCapabilityEnum::GMTI);
+    capability.getCapabilityType() = uci::type::SMTI_CapabilityEnum::AREA;
+    capability.getSubCapabilityType() = uci::type::SMTI_SubCapabilityEnum::GMTI;
     capability.getCapabilityOptions().setInterruptOtherActivities(false);
     capability.getCapabilityOptions().setCollectionPolicy(true);
     capability.getCapabilityOptions().setTrackingSupported(true);
@@ -58,8 +58,7 @@ void publishCapability(uci::base::AbstractServiceBusConnection* asb,
 
     auto& outputs = capability.getMessageOutput();
     outputs.resize(1);
-    auto& output = outputs[0];
-    uci::utils::set(output, uci::type::SMTI_MessageOutputsEnum::SMTI_ACTIVITY);
+    outputs[0] = uci::type::SMTI_MessageOutputsEnum::SMTI_ACTIVITY;
 
     writer->write(*message);
     std::cout << "service: published SMTI_Capability capabilityUUID=" << capabilityUuid.toString() << " [configured]\n";
@@ -73,7 +72,7 @@ void publishCapabilityStatus(uci::base::AbstractServiceBusConnection* asb,
     statuses.resize(1);
     auto& status = statuses[0];
     uci::utils::setId(status.getCapabilityID(), capabilityUuid, kCapabilityName);
-    uci::utils::set(status.getAvailability(), uci::type::AvailabilityEnum::AVAILABLE);
+    status.getAvailability() = uci::type::AvailabilityEnum::AVAILABLE;
 
     writer->write(*message);
     std::cout << "service: published SMTI_CapabilityStatus capabilityUUID=" << capabilityUuid.toString()
@@ -87,7 +86,7 @@ void publishCommandStatus(uci::base::AbstractServiceBusConnection* asb,
     auto message = uci::utils::makeMessage<uci::type::SMTI_CommandStatusMT>(asb);
     auto& data = message->getMessageData();
     uci::utils::setId(data.getCommandID(), commandUuid, "SMTI command");
-    uci::utils::set(data.getCommandProcessingState(), uci::type::CommandProcessingStateEnum::ACCEPTED);
+    data.getCommandProcessingState() = uci::type::CommandProcessingStateEnum::ACCEPTED;
 
     if (activityUuid != nullptr) {
         auto& activities = data.getActivity();
@@ -111,7 +110,7 @@ void publishActivity(uci::base::AbstractServiceBusConnection* asb,
                      uci::type::ActivityStateEnum::EnumerationItem state,
                      uci::type::ObjectStateEnum::EnumerationItem objectState) {
     auto message = uci::utils::makeMessage<uci::type::SMTI_ActivityMT>(asb);
-    uci::utils::set(message->enableObjectState(), objectState);
+    message->enableObjectState() = objectState;
 
     auto& data = message->getMessageData();
     uci::utils::setId(data.getSubsystemID(), asb->getMySubsystemUUID(), "SmtiPayload");
@@ -121,13 +120,12 @@ void publishActivity(uci::base::AbstractServiceBusConnection* asb,
     auto& activity = activities[0];
     uci::utils::setId(activity.getActivityID(), activityUuid, "SMTI activity");
     activity.setInteractive(false);
-    uci::utils::set(activity.getActivityState(), state);
+    activity.getActivityState() = state;
     activity.setAllProductsAndMessagesProduced(state == uci::type::ActivityStateEnum::COMPLETED);
 
     auto& capabilityIds = activity.getCapabilityID();
     capabilityIds.resize(1);
-    auto& capabilityId = capabilityIds[0];
-    uci::utils::setId(capabilityId, capabilityUuid, kCapabilityName);
+    uci::utils::setId(capabilityIds[0], capabilityUuid, kCapabilityName);
 
     writer->write(*message);
     std::cout << "service: published SMTI_Activity activityUUID=" << activityUuid.toString()
@@ -143,7 +141,7 @@ struct ReceivedCommand {
 };
 
 bool waitForCommand(uci::utils::ReaderPtr<uci::type::SMTI_CommandMT>& reader,
-                    uci::utils::FunctionListener<uci::type::SMTI_CommandMT>& listener,
+                    uci::utils::MessageListener<uci::type::SMTI_CommandMT>& listener,
                     ReceivedCommand& command,
                     unsigned long timeoutMs) {
     const auto deadline = Clock::now() + std::chrono::milliseconds(timeoutMs);
@@ -155,11 +153,11 @@ bool waitForCommand(uci::utils::ReaderPtr<uci::type::SMTI_CommandMT>& reader,
 }
 
 bool waitForClientUpdates(uci::utils::ReaderPtr<uci::type::SMTI_CommandStatusMT>& statusReader,
-                          uci::utils::FunctionListener<uci::type::SMTI_CommandStatusMT>& statusListener,
+                          uci::utils::MessageListener<uci::type::SMTI_CommandStatusMT>& statusListener,
                           int& statusCount,
                           int targetStatusCount,
                           uci::utils::ReaderPtr<uci::type::SMTI_ActivityMT>& activityReader,
-                          uci::utils::FunctionListener<uci::type::SMTI_ActivityMT>& activityListener,
+                          uci::utils::MessageListener<uci::type::SMTI_ActivityMT>& activityListener,
                           std::string& lastActivityState,
                           const std::string& targetActivityState,
                           unsigned long timeoutMs) {
@@ -189,7 +187,7 @@ uci::base::UUID sendStartCommand(uci::base::AbstractServiceBusConnection* asb,
     auto& capabilityCommand = command.chooseCapability();
     const auto commandUuid = uci::utils::assignNewId(capabilityCommand.getCommandID(),
                                                      "Start SMTI command");
-    uci::utils::set(capabilityCommand.getCommandState(), uci::type::CommandStateEnum::NEW);
+    capabilityCommand.getCommandState() = uci::type::CommandStateEnum::NEW;
     uci::utils::setId(capabilityCommand.getCapabilityID(), capabilityUuid, kCapabilityName);
     capabilityCommand.getRanking().getRank().getPriority().setValue(1);
 
@@ -210,10 +208,9 @@ uci::base::UUID sendStopCommand(uci::base::AbstractServiceBusConnection* asb,
     auto& activityCommand = command.chooseActivity();
     const auto commandUuid = uci::utils::assignNewId(activityCommand.getCommandID(),
                                                      "Stop SMTI command");
-    uci::utils::set(activityCommand.getCommandState(), uci::type::CommandStateEnum::NEW);
+    activityCommand.getCommandState() = uci::type::CommandStateEnum::NEW;
     uci::utils::setId(activityCommand.getActivityID(), activityUuid, "SMTI activity");
-    uci::utils::set(activityCommand.enableChangeActivityState(),
-                    uci::type::CapabilityCommandStateEnum::DISABLE);
+    activityCommand.enableChangeActivityState() = uci::type::CapabilityCommandStateEnum::DISABLE;
 
     writer->write(*message);
     std::cout << "client: sent stop SMTI_Command commandUUID=" << commandUuid.toString()
@@ -232,7 +229,7 @@ int runService() {
     auto commandReader = uci::utils::makeReader<uci::type::SMTI_CommandMT>(kTopicCommand, asb.get());
 
     ReceivedCommand command;
-    uci::utils::FunctionListener<uci::type::SMTI_CommandMT> commandListener(
+    uci::utils::MessageListener<uci::type::SMTI_CommandMT> commandListener(
         [&](const uci::type::SMTI_CommandMT& message) {
             const auto& commands = message.getMessageData().getCommand();
             if (commands.empty()) return;
@@ -243,14 +240,14 @@ int runService() {
             if (commandChoice.isCapability()) {
                 const auto& capability = commandChoice.getCapability();
                 command.start = true;
-                command.commandUuid = uci::utils::uuidOf(capability.getCommandID());
+                command.commandUuid = capability.getCommandID().getUUID();
                 std::cout << "service: received start SMTI_Command commandUUID=" << command.commandUuid.toString()
-                          << " capabilityUUID=" << uci::utils::uuidOf(capability.getCapabilityID()).toString() << "\n";
+                          << " capabilityUUID=" << capability.getCapabilityID().getUUID().toString() << "\n";
             } else if (commandChoice.isActivity()) {
                 const auto& activity = commandChoice.getActivity();
                 command.start = false;
-                command.commandUuid = uci::utils::uuidOf(activity.getCommandID());
-                command.activityUuid = uci::utils::uuidOf(activity.getActivityID());
+                command.commandUuid = activity.getCommandID().getUUID();
+                command.activityUuid = activity.getActivityID().getUUID();
                 std::cout << "service: received stop SMTI_Command commandUUID=" << command.commandUuid.toString()
                           << " activityUUID=" << command.activityUuid.toString() << "\n";
             }
@@ -263,7 +260,7 @@ int runService() {
         throw std::runtime_error("service timed out waiting for start command");
     }
 
-    const auto activityUuid = uci::utils::newUuid();
+    const auto activityUuid = uci::base::UUID::generateUUID();
     publishCommandStatus(asb.get(), commandStatusWriter, command.commandUuid, &activityUuid);
     publishActivity(asb.get(), activityWriter, capabilityUuid, activityUuid,
                     uci::type::ActivityStateEnum::ACTIVE_UNCONSTRAINED,
@@ -295,20 +292,20 @@ int runClient() {
     uci::base::UUID lastActivityUuid;
     std::string lastActivityState;
 
-    uci::utils::FunctionListener<uci::type::SMTI_CommandStatusMT> statusListener(
+    uci::utils::MessageListener<uci::type::SMTI_CommandStatusMT> statusListener(
         [&](const uci::type::SMTI_CommandStatusMT& message) {
             ++statusCount;
             std::cout << "client: received SMTI_CommandStatus commandUUID="
-                      << uci::utils::uuidOf(message.getMessageData().getCommandID()).toString()
+                      << message.getMessageData().getCommandID().getUUID().toString()
                       << " state=" << message.getMessageData().getCommandProcessingState().toName()
                       << "\n";
         });
 
-    uci::utils::FunctionListener<uci::type::SMTI_ActivityMT> activityListener(
+    uci::utils::MessageListener<uci::type::SMTI_ActivityMT> activityListener(
         [&](const uci::type::SMTI_ActivityMT& message) {
             const auto& activities = message.getMessageData().getActivity();
             if (activities.empty()) return;
-            lastActivityUuid = uci::utils::uuidOf(activities[0].getActivityID());
+            lastActivityUuid = activities[0].getActivityID().getUUID();
             lastActivityState = activities[0].getActivityState().toName();
             std::cout << "client: received SMTI_Activity activityUUID=" << lastActivityUuid.toString()
                       << " state=" << lastActivityState << "\n";
