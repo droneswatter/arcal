@@ -81,10 +81,10 @@ Sample (vary your selection across naming prefixes):
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_factory_methods.cpp`
 
-### Findings — PARTIAL
-- **V1 — `create()` missing `= nullptr` default arg (CXX-011066/067):** Both `create` overloads are generated without a default argument for `AbstractServiceBusConnection*`. Spec requires `= NULL`. Affects every generated header. Documented with a canary comment in the test (default-arg presence can't be `static_assert`ed).
-- **PASS — `copy`, `destroy`, `getUCITypeVersion`, protected `operator=`:** All correct across all sampled types.
-- **Non-issue — abstract types generating `create`/`destroy`:** Benign over-generation; CXX-011066/067/068 only require these on non-abstract types.
+### Findings — PASS
+- **Factory methods match the expected shape (CXX-011063/066/067/068/011410):** sampled generated headers expose `copy`, both `create` overloads, `destroy`, and `getUCITypeVersion()` with the expected signatures.
+- **Default-argument canary passes:** the compile test calls `T::create()` and `T::create(obj)` without explicitly passing an ASB pointer, confirming default `= nullptr` support in the generated declarations.
+- **Abstract-type over-generation remains benign:** abstract types still declare lifecycle helpers, but the compile checks treat that as acceptable extra surface rather than a conformance failure.
 **Spec:** §8967–9040 "Accessor Instance Member Functions" (CERT CXX-011063, CXX-011066, CXX-011067, CXX-011068, CXX-011410)
 
 ### What the spec requires
@@ -116,12 +116,12 @@ be `public static`. `operator=` must be **protected** (see TASK-001).
 
 ## TASK-003 — Required Sequence Element Accessors (get/set pairs)
 **Status:** `done`
-**Test written:** `arcal/test/arcal-cert/compile/conf_required_elements.cpp` (failing assertions in `#if 0` blocks)
+**Test written:** `arcal/test/arcal-cert/compile/conf_required_elements.cpp`
 
-### Findings — FAIL (3 systematic violations, ~6,354 files affected)
-- **V1 — Setters return `void` instead of `Parent&` (CXX-011215, CXX-011217, CXX-011219, CXX-011223, CXX-012708):** Every `setX(...)` in every generated type is `virtual void setX(...) = 0`. Spec requires `virtual Parent& setX(...) = 0` (fluent return). ~5,488 occurrences.
-- **V2 — Simple primitive getters return by reference, not by value (CXX-011216):** Spec requires `T getX() const` (single by-value getter). Generated code produces `T& getX()` + `const T& getX() const` (two ref overloads). Confirmed in `double`, `uint32_t`, `uint16_t`, `int32_t` fields throughout.
-- **V3 — `const char*` setter overload absent (CXX-011220):** No `setX(const char*)` exists anywhere in `include/uci/type/`. The `const std::string&` overload is present but the required companion is missing throughout.
+### Findings — PASS
+- **Required complex accessors pass (CXX-011213/011214/011215):** sampled headers provide mutable and const getters plus parent-reference setters for required complex fields.
+- **Required primitive accessors pass (CXX-011216/011217):** sampled primitive fields return by value from the const getter and use parent-reference setters.
+- **Required string-family and enum accessors pass (CXX-011219/011220/011223/012706/012707/012708):** sampled string-family fields provide the expected getter pair and both `std::string`/`const char*` setter paths, while enum fields accept `EnumerationItem` and return the parent type.
 **Spec:** §9040–9450 "The Element Access Member Functions"
 (CERT CXX-011213, CXX-011214, CXX-011215, CXX-011216, CXX-011217,
 CXX-011219, CXX-011220, CXX-011223, CXX-012706, CXX-012707, CXX-012708)
@@ -154,13 +154,12 @@ Focus on types with mixed required fields:
 
 ## TASK-004 — Optional Sequence Elements (has/enable/clear)
 **Status:** `done`
-**Test written:** `arcal/test/arcal-cert/compile/conf_optional_elements.cpp` (XFAIL `static_assert`s document violations)
+**Test written:** `arcal/test/arcal-cert/compile/conf_optional_elements.cpp`
 
-### Findings — FAIL (3 systematic violations)
-- **V1 — `clearX()` returns `void` instead of `Parent&` (CXX-011231):** All ~4,963 `clearX()` methods return `void`. Spec requires `virtual Parent& clearX() = 0`. `grep "virtual.*& clear"` → 0 matches.
-- **V2 — `enableX()` for complex optionals takes no args (CXX-011230):** Spec requires `virtual T& enableX(uci::base::accessorType::AccessorType = uci::base::accessorType::null) = 0`. All 1,979 `enableX` methods take zero arguments.
-- **V3 — `setX()` absent for optional primitive elements (CXX-012708):** Optional numeric/string-restriction fields have `has`/`enable`/`clear`/`get` but no `set`. At least 109 files affected.
-- **PASS — `hasX() const`** correctly declared throughout.
+### Findings — PASS
+- **Optional complex accessors pass (CXX-011229/011230/011231):** sampled complex optionals provide `hasX() const`, `enableX(AccessorType = null)`, and parent-reference `clearX()`.
+- **Optional primitive-style accessors pass (CXX-012708/012709):** sampled primitive and simple-restriction optionals provide `enableX()`, parent-reference `clearX()`, and parent-reference `setX(...)`.
+- **Current compile checks cover both paths:** the test exercises optional complex, primitive, enum, and simple-restriction-style fields across representative headers.
 **Spec:** §9450 optional element sub-section
 (CERT CXX-011229, CXX-011230, CXX-011231, CXX-012709)
 
@@ -192,12 +191,12 @@ None specific; `conf_accessor.cpp` touches enable/clear indirectly.
 
 ## TASK-005 — Bounded List Element Typedefs and Accessors
 **Status:** `done`
-**Test written:** `arcal/test/arcal-cert/compile/conf_bounded_list_elements.cpp` (asserts fail against current headers — spec targets)
+**Test written:** `arcal/test/arcal-cert/compile/conf_bounded_list_elements.cpp`
 
-### Findings — FAIL (3 systematic violations, 4,664 headers affected)
-- **V1 — Inner typedef entirely absent (CXX-007053/012712/012713):** Spec requires `typedef uci::base::BoundedList<T, accessorType::t> FieldName` as a member type. Zero generated headers define this. Getters use the full template expression inline instead.
-- **V2 — Wrong `accessorType` constant (CXX-007053/012712/012713):** Spec requires `firstLetterToLowercase(cxxElementTypeName)` per-type constant from `uci::type::accessorType`. Generated code uses coarse sentinels (`ACCESSOR_TYPE_COMPLEX`, `ACCESSOR_TYPE_ENUMERATION`, etc.) from `uci::base::accessorType`. The `uci::type::accessorType` namespace doesn't exist in generated output at all.
-- **V3 — BoundedList setter absent (CXX-011228):** 391 BoundedList fields across headers have no `setX(const FieldName&)` method. Root cause: schema compiler emits only the two getter overloads for the bounded branch.
+### Findings — PASS
+- **BoundedList inner typedefs pass (CXX-007053/012712/012713):** sampled bounded-list fields now generate named inner typedefs with element/accessorType combinations that match the underlying field types.
+- **Getter/setter signatures pass (CXX-011226/011227/011228):** sampled bounded-list fields expose mutable and const getters returning the typedef plus parent-reference setters taking `const FieldName&`.
+- **Representative coverage includes complex, scalar primitive, and scalar-restriction-backed list elements.**
 **Spec:** §9450 "Bounded List Member Function", §12460 "The LocalElement Accessor"
 (CERT CXX-007053, CXX-012712, CXX-012713, CXX-011226, CXX-011227, CXX-011228)
 
