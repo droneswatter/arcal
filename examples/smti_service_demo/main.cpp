@@ -222,11 +222,11 @@ int runService() {
     auto asb = uci::utils::makeConnection("SmtiSensorService");
     const auto capabilityUuid = asb->getMyCapabilityUUID(kCapabilityName);
 
-    auto capabilityWriter = uci::utils::makeWriter<uci::type::SMTI_CapabilityMT>(kTopicCapability, asb.get());
-    auto capabilityStatusWriter = uci::utils::makeWriter<uci::type::SMTI_CapabilityStatusMT>(kTopicCapabilityStatus, asb.get());
-    auto commandStatusWriter = uci::utils::makeWriter<uci::type::SMTI_CommandStatusMT>(kTopicCommandStatus, asb.get());
-    auto activityWriter = uci::utils::makeWriter<uci::type::SMTI_ActivityMT>(kTopicActivity, asb.get());
-    auto commandReader = uci::utils::makeReader<uci::type::SMTI_CommandMT>(kTopicCommand, asb.get());
+    auto capabilityWriter = uci::utils::makeWriter<uci::type::SMTI_CapabilityMT>(kTopicCapability, asb);
+    auto capabilityStatusWriter = uci::utils::makeWriter<uci::type::SMTI_CapabilityStatusMT>(kTopicCapabilityStatus, asb);
+    auto commandStatusWriter = uci::utils::makeWriter<uci::type::SMTI_CommandStatusMT>(kTopicCommandStatus, asb);
+    auto activityWriter = uci::utils::makeWriter<uci::type::SMTI_ActivityMT>(kTopicActivity, asb);
+    auto commandReader = uci::utils::makeReader<uci::type::SMTI_CommandMT>(kTopicCommand, asb);
 
     ReceivedCommand command;
     uci::utils::MessageListener<uci::type::SMTI_CommandMT> commandListener(
@@ -284,9 +284,9 @@ int runClient() {
     auto asb = uci::utils::makeConnection("SmtiOperatorService");
     const auto capabilityUuid = asb->getMyCapabilityUUID(kCapabilityName);
 
-    auto commandWriter = uci::utils::makeWriter<uci::type::SMTI_CommandMT>(kTopicCommand, asb.get());
-    auto commandStatusReader = uci::utils::makeReader<uci::type::SMTI_CommandStatusMT>(kTopicCommandStatus, asb.get());
-    auto activityReader = uci::utils::makeReader<uci::type::SMTI_ActivityMT>(kTopicActivity, asb.get());
+    auto commandWriter = uci::utils::makeWriter<uci::type::SMTI_CommandMT>(kTopicCommand, asb);
+    auto commandStatusReader = uci::utils::makeReader<uci::type::SMTI_CommandStatusMT>(kTopicCommandStatus, asb);
+    auto activityReader = uci::utils::makeReader<uci::type::SMTI_ActivityMT>(kTopicActivity, asb);
 
     int statusCount = 0;
     uci::base::UUID lastActivityUuid;

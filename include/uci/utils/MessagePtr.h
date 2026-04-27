@@ -1,5 +1,6 @@
 #pragma once
 
+#include "uci/utils/ConnectionPtr.h"
 #include "uci/base/AbstractServiceBusConnection.h"
 
 #include <utility>
@@ -62,6 +63,11 @@ private:
 template <typename T>
 MessagePtr<T> makeMessage(uci::base::AbstractServiceBusConnection* asb) {
     return MessagePtr<T>(T::create(asb));
+}
+
+template <typename T>
+MessagePtr<T> makeMessage(const ConnectionPtr& asb) {
+    return makeMessage<T>(asb.get());
 }
 
 } // namespace utils

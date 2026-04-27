@@ -1,5 +1,6 @@
 #pragma once
 
+#include "uci/utils/ConnectionPtr.h"
 #include "uci/base/AbstractServiceBusConnection.h"
 
 #include <string>
@@ -128,9 +129,21 @@ ReaderPtr<MT> makeReader(const std::string& topic,
 }
 
 template <typename MT>
+ReaderPtr<MT> makeReader(const std::string& topic,
+                         const ConnectionPtr& asb) {
+    return makeReader<MT>(topic, asb.get());
+}
+
+template <typename MT>
 WriterPtr<MT> makeWriter(const std::string& topic,
                          uci::base::AbstractServiceBusConnection* asb) {
     return WriterPtr<MT>(topic, asb);
+}
+
+template <typename MT>
+WriterPtr<MT> makeWriter(const std::string& topic,
+                         const ConnectionPtr& asb) {
+    return makeWriter<MT>(topic, asb.get());
 }
 
 } // namespace utils
