@@ -130,6 +130,48 @@ TEXT_PRIMITIVE_TYPES = {
 }
 
 
+def first_letter_to_lower(s: str) -> str:
+    if not s:
+        return s
+    return s[0].lower() + s[1:]
+
+
+# Fine-grained accessor type constants for XSD scalar primitives.
+SCALAR_PRIMITIVE_ACCESSOR_CONST_MAP: dict[str, str] = {
+    "boolean":      "uci::base::accessorType::booleanAccessor",
+    "byte":         "uci::base::accessorType::byteAccessor",
+    "short":        "uci::base::accessorType::shortAccessor",
+    "int":          "uci::base::accessorType::intAccessor",
+    "long":         "uci::base::accessorType::longAccessor",
+    "float":        "uci::base::accessorType::floatAccessor",
+    "double":       "uci::base::accessorType::doubleAccessor",
+    "unsignedByte": "uci::base::accessorType::byteAccessor",
+    "unsignedShort":"uci::base::accessorType::shortAccessor",
+    "unsignedInt":  "uci::base::accessorType::intAccessor",
+    "unsignedLong": "uci::base::accessorType::longAccessor",
+    "integer":      "uci::base::accessorType::longAccessor",
+    "decimal":      "uci::base::accessorType::doubleAccessor",
+    "base64Binary": "uci::base::accessorType::binaryAccessor",
+    "hexBinary":    "uci::base::accessorType::binaryAccessor",
+}
+
+# uci::base::XxxAccessor wrapper type for BoundedList typedef element position.
+SCALAR_BOUNDED_LIST_ELEM_TYPE_MAP: dict[str, str] = {
+    "bool":                 "uci::base::BooleanAccessor",
+    "int8_t":               "uci::base::ByteAccessor",
+    "int16_t":              "uci::base::ShortAccessor",
+    "int32_t":              "uci::base::IntAccessor",
+    "int64_t":              "uci::base::LongAccessor",
+    "float":                "uci::base::FloatAccessor",
+    "double":               "uci::base::DoubleAccessor",
+    "uint8_t":              "uci::base::UnsignedByteAccessor",
+    "uint16_t":             "uci::base::UnsignedShortAccessor",
+    "uint32_t":             "uci::base::UnsignedIntAccessor",
+    "uint64_t":             "uci::base::UnsignedLongAccessor",
+    "std::vector<uint8_t>": "uci::base::BinaryAccessor",
+}
+
+
 class FieldModel:
     def __init__(self, name, type_name, optional=False, list_kind=None,
                  min_occurs=0, max_occurs_val=1, resolved_cxx_type=None):
@@ -152,6 +194,9 @@ class FieldModel:
         self.is_text_primitive = type_name in TEXT_PRIMITIVE_TYPES
         self.storage_cxx_type = self.cxx_type
         self.is_uuid = type_name == UUID_TYPE_NAME
+        self.bounded_list_iface_cxx_type = ""      # raw C++ element type for BoundedList impl
+        self.bounded_list_typedef_elem_cxx_type = ""  # wrapper alias type for BoundedList typedef
+        self.bounded_list_storage_cxx_type = ""    # StorageT for BoundedListImpl
 
 
 class ChoiceModel:
@@ -345,16 +390,43 @@ class SchemaParser:
 
     def _get_accessor_type(self, type_name: str) -> str:
         if type_name == UUID_TYPE_NAME:
-            return "uci::base::accessorType::ACCESSOR_TYPE_UUID"
-        if type_name in PRIMITIVE_ACCESSOR_TYPE_MAP:
-            return PRIMITIVE_ACCESSOR_TYPE_MAP[type_name]
+            return "uci::base::accessorType::uuidAccessor"
+        if type_name in SCALAR_PRIMITIVE_ACCESSOR_CONST_MAP:
+            return SCALAR_PRIMITIVE_ACCESSOR_CONST_MAP[type_name]
+        if type_name in TEXT_PRIMITIVE_TYPES:
+            return "xs::accessorType::ACCESSOR_TYPE_STRING"
         if type_name in self.types:
             t = self.types[type_name]
-            if t.is_enum:
-                return "uci::base::accessorType::ACCESSOR_TYPE_ENUMERATION"
+            cxx_name = xsd_name_to_cxx(type_name)
             if t.is_string_restriction:
-                return "uci::base::accessorType::ACCESSOR_TYPE_STRING"
+                return "xs::accessorType::ACCESSOR_TYPE_STRING"
+            return f"uci::type::accessorType::{first_letter_to_lower(cxx_name)}"
         return "uci::base::accessorType::ACCESSOR_TYPE_COMPLEX"
+
+    def _get_bounded_list_types(self, field: "FieldModel") -> "tuple[str, str]":
+        """Returns (iface_cxx_type, typedef_elem_cxx_type) for BoundedList fields."""
+        if field.is_text_primitive or field.type_is_string_restriction:
+            return ("std::string", "xs::String")
+        if field.is_scalar_primitive:
+            wrapper = SCALAR_BOUNDED_LIST_ELEM_TYPE_MAP.get(field.cxx_type, field.cxx_type)
+            return (field.cxx_type, wrapper)
+        if field.is_uuid:
+            return (field.cxx_type, field.cxx_type)
+        if field.type_is_generated:
+            qualified = f"uci::type::{field.cxx_type}"
+            return (qualified, qualified)
+        qualified = _qualify_filter(field.cxx_type, PRIMITIVE_TYPES, field.type_name)
+        return (qualified, qualified)
+
+    def _get_bounded_list_storage_type(self, field: "FieldModel") -> str:
+        """Returns StorageT for BoundedListImpl."""
+        if field.is_text_primitive or field.type_is_string_restriction:
+            return "std::string"
+        if field.is_scalar_primitive or field.is_uuid:
+            return field.cxx_type
+        if field.type_is_generated:
+            return f"arcal::type::{field.cxx_type}Impl"
+        return _qualify_filter(field.cxx_type, PRIMITIVE_TYPES, field.type_name)
 
     def _resolve_accessor_types(self):
         for type_model in self.types.values():
@@ -371,6 +443,11 @@ class SchemaParser:
                 )
                 if field.type_is_generated:
                     field.storage_cxx_type = f"{field.cxx_type}Impl"
+                if field.list_kind == "bounded":
+                    iface, typedef = self._get_bounded_list_types(field)
+                    field.bounded_list_iface_cxx_type = iface
+                    field.bounded_list_typedef_elem_cxx_type = typedef
+                    field.bounded_list_storage_cxx_type = self._get_bounded_list_storage_type(field)
             for choice in type_model.choices:
                 for v in choice.variants:
                     v.accessor_type = self._get_accessor_type(v.type_name)
@@ -527,7 +604,10 @@ ACCESSOR_H_TEMPLATE = """\
 #include "uci/base/Accessor.h"
 #include "uci/base/AbstractServiceBusConnection.h"
 #include "uci/base/BoundedList.h"
+#include "uci/base/PrimitiveAccessors.h"
 #include "uci/base/SimpleList.h"
+#include "uci/type/accessorType.h"
+#include "xs/accessorType.h"
 {% if type.uses_uuid %}\
 #include "uci/base/UUID.h"
 {% endif %}\
@@ -563,7 +643,7 @@ class {{ type.cxx_name }} : public virtual uci::type::{{ type.base_type }} {
 class {{ type.cxx_name }} : public virtual uci::base::Accessor {
 {% endif %}\
 public:
-    AccessorType getAccessorType() const noexcept override { return ACCESSOR_TYPE_COMPLEX; }
+    AccessorType getAccessorType() const noexcept override { return uci::type::accessorType::{{ type.cxx_name | first_letter_lower }}; }
     const std::string& typeName() const override {
         static const std::string kName{"{{ type.name }}"};
         return kName;
@@ -622,8 +702,10 @@ public:
 
 {% for field in type.fields %}\
 {% if field.list_kind == "bounded" %}\
-    virtual uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() = 0;
-    virtual const uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() const = 0;
+    typedef uci::base::BoundedList<{{ field.bounded_list_typedef_elem_cxx_type }}, {{ field.accessor_type }}> {{ field.cxx_name }};
+    virtual {{ field.cxx_name }}& get{{ field.cxx_name }}() = 0;
+    virtual const {{ field.cxx_name }}& get{{ field.cxx_name }}() const = 0;
+    virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_name }}&) = 0;
 {% elif field.list_kind == "unbounded" %}\
     virtual uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() = 0;
     virtual const uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() const = 0;
@@ -705,7 +787,6 @@ ACCESSOR_IMPL_H_TEMPLATE = """\
 // Generated by arcal schema compiler. DO NOT EDIT.
 
 #include "uci/type/{{ type.cxx_name }}.h"
-#include "arcal/TypedAccessor.h"
 #include "uci/base/BoundedListImpl.h"
 #include "uci/base/SimpleListImpl.h"
 {% if type.base_type and type.base_type not in primitive_types %}\
@@ -728,9 +809,9 @@ namespace arcal {
 namespace type {
 
 {% if type.base_type and type.base_type not in primitive_types %}\
-class {{ type.cxx_name }}Impl : public virtual uci::type::{{ type.cxx_name }}, public arcal::type::{{ type.base_type }}Impl, public virtual arcal::type::TypedAccessor {
+class {{ type.cxx_name }}Impl : public virtual uci::type::{{ type.cxx_name }}, public arcal::type::{{ type.base_type }}Impl {
 {% else %}\
-class {{ type.cxx_name }}Impl : public virtual uci::type::{{ type.cxx_name }}, public virtual arcal::type::TypedAccessor {
+class {{ type.cxx_name }}Impl : public virtual uci::type::{{ type.cxx_name }} {
 {% endif %}\
 public:
     using UciType = uci::type::{{ type.cxx_name }};
@@ -741,7 +822,6 @@ public:
     {{ type.cxx_name }}Impl& operator=(const {{ type.cxx_name }}Impl&) = default;
     ~{{ type.cxx_name }}Impl() override = default;
 
-    uint32_t typeTag() const noexcept override { return TYPE_TAG; }
     void reset() override { *this = {{ type.cxx_name }}Impl{}; }
     void copy(const UciType& rhs) override {
 {% if type.base_type and type.base_type not in primitive_types %}\
@@ -788,8 +868,13 @@ public:
 
 {% for field in type.fields %}\
 {% if field.list_kind == "bounded" %}\
-    uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() override { return {{ field.name }}_; }
-    const uci::base::BoundedList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() const override { return {{ field.name }}_; }
+    UciType::{{ field.cxx_name }}& get{{ field.cxx_name }}() override { return {{ field.name }}_; }
+    const UciType::{{ field.cxx_name }}& get{{ field.cxx_name }}() const override { return {{ field.name }}_; }
+    UciType& set{{ field.cxx_name }}(const UciType::{{ field.cxx_name }}& rhs) override {
+        {{ field.name }}_.clear();
+        for (const auto& item : rhs) { {{ field.name }}_.push_back(item); }
+        return *this;
+    }
 {% elif field.list_kind == "unbounded" %}\
     uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() override { return {{ field.name }}_; }
     const uci::base::SimpleList<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}>& get{{ field.cxx_name }}() const override { return {{ field.name }}_; }
@@ -860,7 +945,7 @@ public:
 private:
 {% for field in type.fields %}\
 {% if field.list_kind == "bounded" %}\
-    uci::base::BoundedListImpl<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}, {{ field | storage_qualify(primitive_types) }}> {{ field.name }}_;
+    uci::base::BoundedListImpl<{{ field.bounded_list_iface_cxx_type }}, {{ field.accessor_type }}, {{ field.min_occurs }}, {{ field.max_occurs_val }}, {{ field.bounded_list_storage_cxx_type }}> {{ field.name }}_;
 {% elif field.list_kind == "unbounded" %}\
     uci::base::SimpleListImpl<{{ field.cxx_type | qualify(primitive_types, field.type_name) }}, {{ field.accessor_type }}, {{ field | storage_qualify(primitive_types) }}> {{ field.name }}_;
 {% elif field.is_uuid %}\
@@ -890,6 +975,7 @@ ENUM_H_TEMPLATE = """\
 
 #include "uci/base/AbstractServiceBusConnection.h"
 #include "uci/base/Accessor.h"
+#include "uci/type/accessorType.h"
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -907,7 +993,7 @@ public:
         enumMaxExclusive,
     };
 
-    AccessorType getAccessorType() const noexcept override { return ACCESSOR_TYPE_ENUMERATION; }
+    AccessorType getAccessorType() const noexcept override { return uci::type::accessorType::{{ type.cxx_name | first_letter_lower }}; }
     const std::string& typeName() const override {
         static const std::string kName{"{{ type.name }}"};
         return kName;
@@ -1014,12 +1100,11 @@ ENUM_IMPL_H_TEMPLATE = """\
 // Generated by arcal schema compiler. DO NOT EDIT.
 
 #include "uci/type/{{ type.cxx_name }}.h"
-#include "arcal/TypedAccessor.h"
 
 namespace arcal {
 namespace type {
 
-class {{ type.cxx_name }}Impl : public virtual uci::type::{{ type.cxx_name }}, public virtual arcal::type::TypedAccessor {
+class {{ type.cxx_name }}Impl : public virtual uci::type::{{ type.cxx_name }} {
 public:
     using UciType = uci::type::{{ type.cxx_name }};
     using EnumerationItem = UciType::EnumerationItem;
@@ -1030,7 +1115,6 @@ public:
     {{ type.cxx_name }}Impl& operator=(const {{ type.cxx_name }}Impl&) = default;
     ~{{ type.cxx_name }}Impl() override = default;
 
-    uint32_t typeTag() const noexcept override { return TYPE_TAG; }
     void reset() override { value_ = UciType::enumNotSet; }
     void copy(const UciType& rhs) override { value_ = rhs.getValue(); }
     void setValue(EnumerationItem v) override { value_ = v; }
@@ -1050,6 +1134,7 @@ STRING_RESTRICTION_H_TEMPLATE = """\
 
 #include "uci/base/AbstractServiceBusConnection.h"
 #include "uci/base/Accessor.h"
+#include "uci/type/accessorType.h"
 {% if type.base_type == uuid_cxx_type %}\
 #include "uci/base/UUID.h"
 {% endif %}\
@@ -1066,7 +1151,7 @@ namespace type {
 
 class {{ type.cxx_name }} : public virtual uci::base::Accessor {
 public:
-    AccessorType getAccessorType() const noexcept override { return ACCESSOR_TYPE_SIMPLE_PRIMITIVE; }
+    AccessorType getAccessorType() const noexcept override { return uci::type::accessorType::{{ type.cxx_name | first_letter_lower }}; }
     const std::string& typeName() const override {
         static const std::string kName{"{{ type.name }}"};
         return kName;
@@ -1101,12 +1186,11 @@ STRING_RESTRICTION_IMPL_H_TEMPLATE = """\
 // Generated by arcal schema compiler. DO NOT EDIT.
 
 #include "uci/type/{{ type.cxx_name }}.h"
-#include "arcal/TypedAccessor.h"
 
 namespace arcal {
 namespace type {
 
-class {{ type.cxx_name }}Impl : public virtual uci::type::{{ type.cxx_name }}, public virtual arcal::type::TypedAccessor {
+class {{ type.cxx_name }}Impl : public virtual uci::type::{{ type.cxx_name }} {
 public:
     using UciType = uci::type::{{ type.cxx_name }};
     static constexpr uint32_t TYPE_TAG = {{ type_tag }}u;
@@ -1116,7 +1200,6 @@ public:
     {{ type.cxx_name }}Impl& operator=(const {{ type.cxx_name }}Impl&) = default;
     ~{{ type.cxx_name }}Impl() override = default;
 
-    uint32_t typeTag() const noexcept override { return TYPE_TAG; }
     void reset() override { value_ = {{ type.base_type }}{}; }
     void copy(const UciType& rhs) override { value_ = rhs.getValue(); }
     const {{ type.base_type }}& getValue() const override { return value_; }
@@ -1198,6 +1281,7 @@ def _make_env() -> "Environment":
     env.filters["qualify"] = _qualify_filter
     env.filters["storage_qualify"] = _storage_qualify_filter
     env.filters["sanitize_enum"] = _sanitize_enum
+    env.filters["first_letter_lower"] = first_letter_to_lower
     return env
 
 # Compiled once at import time; reused for every render call.
@@ -1265,6 +1349,7 @@ CDR_CPP_TEMPLATE = """\
 // Generated by arcal schema compiler. DO NOT EDIT.
 #include "uci/type/{{ type.cxx_name }}.h"
 #include "generated/type_impl/{{ type.cxx_name }}Impl.h"
+#include "uci/type/accessorType.h"
 #include "CdrPrimitives.h"
 #include "CdrRegistry.h"
 
@@ -1306,7 +1391,7 @@ static void {{ type.cxx_name }}_deserialize_impl(uci::type::{{ type.cxx_name }}&
 
 void {{ type.cxx_name }}_serialize_impl(const uci::type::{{ type.cxx_name }}& obj, std::vector<uint8_t>& buf) {
 {% if type.base_type and type.base_type not in primitive_types %}\
-    arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ type.base_type }}Impl::TYPE_TAG).serialize(obj, buf);
+    arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ type.base_type | first_letter_lower }}).serialize(obj, buf);
 {% endif %}\
 {% for choice in type.choices %}\
     arcal::externalizer::cdr::encode_uint32(buf, static_cast<uint32_t>(obj.get{{ type.cxx_name }}ChoiceOrdinal()));
@@ -1315,7 +1400,7 @@ void {{ type.cxx_name }}_serialize_impl(const uci::type::{{ type.cxx_name }}& ob
 {% if v.type_name in primitive_types %}\
         {{ encode_map.get(v.cxx_type, 'arcal::externalizer::cdr::encode_string') }}(buf, obj.get{{ v.cxx_name }}());
 {% else %}\
-        arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ v.cxx_type }}Impl::TYPE_TAG).serialize(obj.get{{ v.cxx_name }}(), buf);
+        arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ v.cxx_type | first_letter_lower }}).serialize(obj.get{{ v.cxx_name }}(), buf);
 {% endif %}\
     }
 {% endfor %}\
@@ -1326,8 +1411,10 @@ void {{ type.cxx_name }}_serialize_impl(const uci::type::{{ type.cxx_name }}& ob
     for (const auto& item : obj.get{{ field.cxx_name }}()) {
 {% if field.type_name in primitive_types %}\
         {{ encode_map.get(field.cxx_type, 'arcal::externalizer::cdr::encode_string') }}(buf, item);
+{% elif field.type_is_string_restriction %}\
+        arcal::externalizer::cdr::encode_string(buf, item);
 {% else %}\
-        arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ field.cxx_type }}Impl::TYPE_TAG).serialize(item, buf);
+        arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ field.cxx_type | first_letter_lower }}).serialize(item, buf);
 {% endif %}\
     }
 {% elif field.is_uuid %}\
@@ -1338,14 +1425,14 @@ void {{ type.cxx_name }}_serialize_impl(const uci::type::{{ type.cxx_name }}& ob
 {% if field.type_name in primitive_types %}\
         {{ encode_map.get(field.cxx_type, 'arcal::externalizer::cdr::encode_string') }}(buf, obj.get{{ field.cxx_name }}());
 {% else %}\
-        arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ field.cxx_type }}Impl::TYPE_TAG).serialize(obj.get{{ field.cxx_name }}(), buf);
+        arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ field.cxx_type | first_letter_lower }}).serialize(obj.get{{ field.cxx_name }}(), buf);
 {% endif %}\
     }
 {% else %}\
 {% if field.type_name in primitive_types %}\
     {{ encode_map.get(field.cxx_type, 'arcal::externalizer::cdr::encode_string') }}(buf, obj.get{{ field.cxx_name }}());
 {% else %}\
-    arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ field.cxx_type }}Impl::TYPE_TAG).serialize(obj.get{{ field.cxx_name }}(), buf);
+    arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ field.cxx_type | first_letter_lower }}).serialize(obj.get{{ field.cxx_name }}(), buf);
 {% endif %}\
 {% endif %}\
 {% endfor %}\
@@ -1353,7 +1440,7 @@ void {{ type.cxx_name }}_serialize_impl(const uci::type::{{ type.cxx_name }}& ob
 
 void {{ type.cxx_name }}_deserialize_impl(uci::type::{{ type.cxx_name }}& obj, const std::vector<uint8_t>& buf, std::size_t& off) {
 {% if type.base_type and type.base_type not in primitive_types %}\
-    arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ type.base_type }}Impl::TYPE_TAG).deserialize_at(buf, off, obj);
+    arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ type.base_type | first_letter_lower }}).deserialize_at(buf, off, obj);
 {% endif %}\
 {% for choice in type.choices %}\
     auto ord = static_cast<uci::type::{{ type.cxx_name }}::{{ type.cxx_name }}ChoiceOrdinalEnum>(
@@ -1364,7 +1451,7 @@ void {{ type.cxx_name }}_deserialize_impl(uci::type::{{ type.cxx_name }}& obj, c
 {% if v.type_name in primitive_types %}\
         obj.choose{{ v.cxx_name }}() = {{ decode_map.get(v.cxx_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off);
 {% else %}\
-        arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ v.cxx_type }}Impl::TYPE_TAG).deserialize_at(buf, off, obj.choose{{ v.cxx_name }}());
+        arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ v.cxx_type | first_letter_lower }}).deserialize_at(buf, off, obj.choose{{ v.cxx_name }}());
 {% endif %}\
         break;
     }
@@ -1379,9 +1466,11 @@ void {{ type.cxx_name }}_deserialize_impl(uci::type::{{ type.cxx_name }}& obj, c
       for (uint32_t i = 0; i < cnt; ++i) {
 {% if field.type_name in primitive_types %}\
           obj.get{{ field.cxx_name }}().push_back({{ decode_map.get(field.cxx_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off));
+{% elif field.type_is_string_restriction %}\
+          obj.get{{ field.cxx_name }}().push_back(arcal::externalizer::cdr::decode_string(buf, off));
 {% else %}\
-          {{ field | storage_qualify(primitive_types) }} item;
-          arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ field.cxx_type }}Impl::TYPE_TAG).deserialize_at(buf, off, item);
+          {{ field.bounded_list_storage_cxx_type }} item;
+          arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ field.cxx_type | first_letter_lower }}).deserialize_at(buf, off, item);
           obj.get{{ field.cxx_name }}().push_back(item);
 {% endif %}\
       }
@@ -1393,14 +1482,14 @@ void {{ type.cxx_name }}_deserialize_impl(uci::type::{{ type.cxx_name }}& obj, c
 {% if field.type_name in primitive_types %}\
         obj.enable{{ field.cxx_name }}() = {{ decode_map.get(field.cxx_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off);
 {% else %}\
-        arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ field.cxx_type }}Impl::TYPE_TAG).deserialize_at(buf, off, obj.enable{{ field.cxx_name }}());
+        arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ field.cxx_type | first_letter_lower }}).deserialize_at(buf, off, obj.enable{{ field.cxx_name }}());
 {% endif %}\
     }
 {% else %}\
 {% if field.type_name in primitive_types %}\
     obj.set{{ field.cxx_name }}({{ decode_map.get(field.cxx_type, 'arcal::externalizer::cdr::decode_string') }}(buf, off));
 {% else %}\
-    arcal::externalizer::CdrRegistry::instance().lookupByTag(arcal::type::{{ field.cxx_type }}Impl::TYPE_TAG).deserialize_at(buf, off, obj.get{{ field.cxx_name }}());
+    arcal::externalizer::CdrRegistry::instance().lookupByTag(uci::type::accessorType::{{ field.cxx_type | first_letter_lower }}).deserialize_at(buf, off, obj.get{{ field.cxx_name }}());
 {% endif %}\
 {% endif %}\
 {% endfor %}\
@@ -1498,9 +1587,30 @@ void {{ cxx_type }}::destroyWriter(Writer& writer) {
 } } // namespace uci::type
 """
 
+ACCESSOR_TYPE_H_TEMPLATE = """\
+#pragma once
+// Generated by arcal schema compiler. DO NOT EDIT.
+// uci::type::accessorType — one fine-grained constant per generated UCI type.
+// Each constant equals fnv1a32(xsd_type_name) and doubles as the CDR wire tag.
+#include "uci/base/accessorType.h"
+
+namespace uci {
+namespace type {
+namespace accessorType {
+
+using AccessorType = uci::base::accessorType::AccessorType;
+{% for cxx_name, xsd_name, tag in type_entries %}\
+inline constexpr AccessorType {{ cxx_name | first_letter_lower }} = {{ tag }}u;
+{% endfor %}\
+} // namespace accessorType
+} // namespace type
+} // namespace uci
+"""
+
 _TMPL_CDR_CPP          = _ENV.from_string(CDR_CPP_TEMPLATE)
 _TMPL_CDR_REGISTER_ALL = _ENV.from_string(CDR_REGISTER_ALL_TEMPLATE)
 _TMPL_FACTORY_ALL_CPP  = _ENV.from_string(FACTORY_ALL_CPP_TEMPLATE)
+_TMPL_ACCESSOR_TYPE_H  = _ENV.from_string(ACCESSOR_TYPE_H_TEMPLATE)
 
 # ---------------------------------------------------------------------------
 # JSON handler code generation
@@ -1755,6 +1865,11 @@ def render_json_register_all(type_models: list) -> str:
     )
 
 
+def render_accessor_type_h(type_models: list) -> str:
+    type_entries = [(m.cxx_name, m.name, fnv1a32(m.name)) for m in type_models]
+    return _TMPL_ACCESSOR_TYPE_H.render(type_entries=type_entries)
+
+
 def render_cdr_handler(type_model: TypeModel) -> str:
     return _TMPL_CDR_CPP.render(
         type=type_model,
@@ -1943,6 +2058,7 @@ def main():
 
         type_models.append(type_model)
 
+    (type_out_dir / "accessorType.h").write_text(render_accessor_type_h(type_models))
     (cdr_out_dir / "cdr_register_all.cpp").write_text(render_cdr_register_all(type_models))
     (json_out_dir / "json_register_all.cpp").write_text(render_json_register_all(type_models))
     (cdr_out_dir / "type_lifecycle_all.cpp").write_text(render_type_lifecycle(type_models))
