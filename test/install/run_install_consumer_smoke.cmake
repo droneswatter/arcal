@@ -10,6 +10,12 @@ endif()
 if(NOT DEFINED TEST_SOURCE_DIR)
     message(FATAL_ERROR "TEST_SOURCE_DIR is required")
 endif()
+if(NOT DEFINED ARCAL_CONSUMER_PACKAGE)
+    set(ARCAL_CONSUMER_PACKAGE arcal)
+endif()
+if(NOT DEFINED ARCAL_CONSUMER_TARGET)
+    set(ARCAL_CONSUMER_TARGET arcal::arcal)
+endif()
 
 set(CONSUMER_SOURCE_DIR "${TEST_SOURCE_DIR}/consumer")
 set(CONSUMER_BINARY_DIR "${WORK_DIR}/consumer-build")
@@ -20,6 +26,9 @@ file(MAKE_DIRECTORY "${WORK_DIR}")
 set(_install_args --install "${PROJECT_BINARY_DIR}" --prefix "${INSTALL_PREFIX}")
 if(TEST_CONFIG)
     list(APPEND _install_args --config "${TEST_CONFIG}")
+endif()
+if(TEST_TYPE)
+    list(APPEND _install_args --component "${TEST_TYPE}")
 endif()
 
 execute_process(
@@ -43,6 +52,8 @@ set(_configure_args
     -S "${CONSUMER_SOURCE_DIR}"
     -B "${CONSUMER_BINARY_DIR}"
     "-DCMAKE_PREFIX_PATH=${_prefix_path}"
+    "-DARCAL_CONSUMER_PACKAGE=${ARCAL_CONSUMER_PACKAGE}"
+    "-DARCAL_CONSUMER_TARGET=${ARCAL_CONSUMER_TARGET}"
 )
 if(TEST_GENERATOR)
     list(APPEND _configure_args -G "${TEST_GENERATOR}")

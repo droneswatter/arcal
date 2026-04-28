@@ -3,7 +3,7 @@
 // Verifies that JSON advertises read/write object support and that
 // write(vector) still throws (binary path unsupported for JSON).
 
-#include "uci/type/ActionCommandMT.h"
+#include "uci/type/ServiceStatusMT.h"
 #include "uci/base/ExternalizerLoader.h"
 #include "uci/base/Externalizer.h"
 #include "uci/base/UCIException.h"
@@ -28,7 +28,7 @@ int main() {
     auto* loader = uci_getExternalizerLoader();
     auto* ext    = loader->getExternalizer("JSON", "2.5.0", "2.5.0");
 
-    auto& msg = uci::type::ActionCommandMT::create(nullptr);
+    auto& msg = uci::type::ServiceStatusMT::create(nullptr);
     std::vector<uint8_t> vec;
     if (ext->messageReadOnly()) {
         std::cerr << "FAIL: messageReadOnly() should be false\n";
@@ -51,7 +51,7 @@ int main() {
 
     loader->destroyExternalizer(ext);
     uci_destroyExternalizerLoader(loader);
-    uci::type::ActionCommandMT::destroy(msg);
+    uci::type::ServiceStatusMT::destroy(msg);
 
     if (failures) {
         std::cerr << "FAIL json_write_readonly — " << failures << " failure(s)\n";

@@ -295,14 +295,37 @@ function(arcal_add_subset subset_config_path)
 
     install(TARGETS ${subset_target_base} ${subset_target_base}_externalizer_json
         EXPORT ${subset_target_base}Targets
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT ${subset_target_base}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT ${subset_target_base}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT ${subset_target_base}
     )
 
     install(
         DIRECTORY ${subset_include_dir}/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${subset_name}
+        COMPONENT ${subset_target_base}
+    )
+
+    install(
+        DIRECTORY
+            ${CMAKE_SOURCE_DIR}/include/uci/base
+            ${CMAKE_SOURCE_DIR}/include/uci/utils
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/uci
+        COMPONENT ${subset_target_base}
+    )
+
+    install(
+        DIRECTORY ${CMAKE_SOURCE_DIR}/include/xs
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        COMPONENT ${subset_target_base}
+    )
+
+    install(
+        DIRECTORY ${CMAKE_SOURCE_DIR}/externalizer/json/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcal/externalizer/json
+        COMPONENT ${subset_target_base}
+        FILES_MATCHING
+            PATTERN "*.h"
     )
 
     set(ARCAL_SUBSET_TARGETS_FILE "${subset_name}Targets.cmake")
@@ -323,6 +346,7 @@ function(arcal_add_subset subset_config_path)
         FILE ${subset_name}Targets.cmake
         NAMESPACE ${subset_target_base}::
         DESTINATION ${subset_package_dir}
+        COMPONENT ${subset_target_base}
     )
 
     install(
@@ -330,7 +354,24 @@ function(arcal_add_subset subset_config_path)
             ${CMAKE_BINARY_DIR}/${subset_name}Config.cmake
             ${CMAKE_BINARY_DIR}/${subset_name}ConfigVersion.cmake
         DESTINATION ${subset_package_dir}
+        COMPONENT ${subset_target_base}
     )
+
+    install(
+        FILES
+            ${CMAKE_SOURCE_DIR}/README.md
+            ${subset_config_abs}
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/${subset_name}
+        COMPONENT ${subset_target_base}
+    )
+
+    set(_arcal_variants ${ARCAL_CAL_VARIANTS})
+    list(APPEND _arcal_variants ${subset_target_base})
+    set(ARCAL_CAL_VARIANTS "${_arcal_variants}" PARENT_SCOPE)
+    set(ARCAL_JSON_PLUGIN_${subset_target_base} "${subset_target_base}_externalizer_json" PARENT_SCOPE)
+    set(ARCAL_GENERATED_TARGET_${subset_target_base} "${subset_target_base}_generated" PARENT_SCOPE)
+    set(ARCAL_LACAL_OUTPUT_${subset_target_base} "arlacal-server-${subset_suffix}" PARENT_SCOPE)
+    set(ARCAL_EXAMPLE_PREFIX_${subset_target_base} "${subset_target_base}" PARENT_SCOPE)
 endfunction()
 
 # ---------------------------------------------------------------------------
@@ -415,6 +456,12 @@ set_target_properties(arcal PROPERTIES
 
 target_link_libraries(arcal PUBLIC CycloneDDS-CXX::ddscxx PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS})
 
+set(ARCAL_CAL_VARIANTS arcal)
+set(ARCAL_JSON_PLUGIN_arcal arcal_externalizer_json)
+set(ARCAL_GENERATED_TARGET_arcal arcal_generated)
+set(ARCAL_LACAL_OUTPUT_arcal arlacal-server)
+set(ARCAL_EXAMPLE_PREFIX_arcal arcal)
+
 # Use mold linker if available — significantly faster than ld/lld for large targets.
 find_program(MOLD_LINKER mold)
 if(MOLD_LINKER)
@@ -430,6 +477,10 @@ add_subdirectory(externalizer/json)
 foreach(subset_config IN LISTS ARCAL_SUBSET_CONFIGS)
     arcal_add_subset("${subset_config}")
 endforeach()
+
+if(NOT DEFINED ARCAL_CERT_CAL_LIB OR ARCAL_CERT_CAL_LIB STREQUAL "")
+    set(ARCAL_CERT_CAL_LIB "arcal" CACHE STRING "")
+endif()
 
 # ---------------------------------------------------------------------------
 # Language-Agnostic CAL server
@@ -453,10 +504,6 @@ endif()
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-
-if(NOT DEFINED ARCAL_CERT_CAL_LIB OR ARCAL_CERT_CAL_LIB STREQUAL "")
-    set(ARCAL_CERT_CAL_LIB "arcal" CACHE STRING "")
-endif()
 
 set(ARCAL_STANDALONE_TEST_CAL_LIB "${ARCAL_CERT_CAL_LIB}")
 if(ARCAL_STANDALONE_TEST_CAL_LIB STREQUAL "arcal")

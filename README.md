@@ -172,7 +172,7 @@ Subset config format:
 ```
 
 `message_types` is required. Entries may be OMS global element names such as
-`ActionCommand` or generated message accessor names such as `ActionCommandMT`.
+`ServiceStatus` or generated message accessor names such as `ServiceStatusMT`.
 `accessor_types` is optional and is useful when a consumer directly includes
 non-message accessor headers that are not reachable from the chosen messages.
 
@@ -201,9 +201,11 @@ target_link_libraries(my_app PRIVATE arcal_simple::arcal_simple)
 
 ### Running arcal-cert with a subset CAL
 
-The bundled `config/subsets/arcal-busmon-cert.json` starts from the
-bus-monitor demo message flow (`ActionCommand`) and adds the extra accessor
-roots referenced directly by `arcal-cert` compile checks.
+The bundled `config/subsets/arcal-busmon-cert.json` covers the bus-monitor
+demo status/report flow (`ServiceStatus`, `SystemStatus`, `SubsystemStatus`,
+`PositionReport`), the AMTI/SMTI sample message flows, `ServiceErrorReport`,
+and `CovarianceMatrixType` as the one explicit accessor root for primitive
+bounded-list conformance.
 
 Configure a dedicated build that points `arcal-cert` at the subset CAL target:
 
@@ -225,6 +227,15 @@ Build the subset CAL and the full standalone + `arcal-cert` test suite against i
 ```bash
 cmake --build build-subset-cert --target arcal_test_suite_all -j4
 ctest --test-dir build-subset-cert --output-on-failure
+```
+
+The same workflow is wrapped by convenience scripts:
+
+```bash
+scripts/build-cal.sh full
+scripts/test-cal.sh full
+scripts/build-cal.sh busmon-cert
+scripts/test-cal.sh busmon-cert
 ```
 
 If you want to exercise the runtime `CERT` and `E2E` coverage without the
@@ -385,17 +396,17 @@ uci_destroyAbstractServiceBusConnection(conn);
 ### Publishing a message
 
 ```cpp
-#include "uci/type/ActionCommand.h"  // global element header: factories + listener
+#include "uci/type/ServiceStatus.h"  // global element header: factories + listener
 
-auto& writer = uci::type::ActionCommandMT::createWriter("ActionCommand", conn);
-auto& msg = uci::type::ActionCommandMT::create(conn);
+auto& writer = uci::type::ServiceStatusMT::createWriter("ServiceStatus", conn);
+auto& msg = uci::type::ServiceStatusMT::create(conn);
 
 // ... populate msg fields ...
 writer.write(msg);
 
-uci::type::ActionCommandMT::destroy(msg);
+uci::type::ServiceStatusMT::destroy(msg);
 writer.close();
-uci::type::ActionCommandMT::destroyWriter(writer);
+uci::type::ServiceStatusMT::destroyWriter(writer);
 ```
 
 ### Subscribing to a message
@@ -403,11 +414,11 @@ uci::type::ActionCommandMT::destroyWriter(writer);
 Implement the generated typed listener interface declared in the global element header:
 
 ```cpp
-#include "uci/type/ActionCommand.h"
+#include "uci/type/ServiceStatus.h"
 
-class MyListener : public uci::type::ActionCommandMT::Listener {
+class MyListener : public uci::type::ServiceStatusMT::Listener {
 public:
-    void handleMessage(const uci::type::ActionCommandMT& msg) override {
+    void handleMessage(const uci::type::ServiceStatusMT& msg) override {
         // handle message
     }
 };
@@ -417,13 +428,13 @@ Then register it with a reader:
 
 ```cpp
 MyListener listener;
-auto& reader = uci::type::ActionCommandMT::createReader("ActionCommand", conn);
+auto& reader = uci::type::ServiceStatusMT::createReader("ServiceStatus", conn);
 reader.addListener(listener);
 
 // Remove when done
 reader.removeListener(listener);
 reader.close();
-uci::type::ActionCommandMT::destroyReader(reader);
+uci::type::ServiceStatusMT::destroyReader(reader);
 ```
 
 Polling mode (no listener required):
@@ -486,22 +497,22 @@ The JSON externalizer is built as `arcal_externalizer_json` and is available thr
 
 ```cpp
 #include "uci/base/ExternalizerLoader.h"
-#include "uci/type/ActionCommandMT.h"
+#include "uci/type/ServiceStatusMT.h"
 
 uci::base::ExternalizerLoader* loader = uci_getExternalizerLoader();
 uci::base::Externalizer* json = loader->getExternalizer("JSON", "2.5.0", "2.5.0");
 
-auto& msg = uci::type::ActionCommandMT::create(conn);
+auto& msg = uci::type::ServiceStatusMT::create(conn);
 msg.getMessageHeader().getSchemaVersion().setValue("2.5.0");
 
 std::string text;
 json->write(msg, text);
 
-auto& parsed = uci::type::ActionCommandMT::create(conn);
+auto& parsed = uci::type::ServiceStatusMT::create(conn);
 json->read(text, parsed);
 
-uci::type::ActionCommandMT::destroy(parsed);
-uci::type::ActionCommandMT::destroy(msg);
+uci::type::ServiceStatusMT::destroy(parsed);
+uci::type::ServiceStatusMT::destroy(msg);
 loader->destroyExternalizer(json);
 uci_destroyExternalizerLoader(loader);
 ```
@@ -552,7 +563,7 @@ On startup the server logs the listening URL and discovered DDS topics:
 
 ```text
 [arlacal] listening on ws://127.0.0.1:8766 subprotocol=owp domain=0
-[arlacal] discovered topic=ActionCommand
+[arlacal] discovered topic=ServiceStatus
 ```
 
 For protocol details, ARCAL-specific OWP extensions, and fuller launch notes,
@@ -598,7 +609,7 @@ ctest --test-dir build -R "^INSTALL-" --output-on-failure
 
 | Test ID | Description |
 |---------|-------------|
-| `E2E-ActionCommand-PubSub` | Publisher and subscriber exchange an ActionCommand over live DDS (two processes) |
+| `E2E-ServiceStatus-PubSub` | Publisher and subscriber exchange a ServiceStatus over live DDS (two processes) |
 | `E2E-TopicIsolation` | Messages on separate topics are not delivered to the wrong subscriber (two processes) |
 | `E2E-content-fidelity` | Message content survives CAL publish/subscribe delivery |
 | `E2E-multi-message` | Multiple sequential messages are delivered in order |

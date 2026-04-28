@@ -6,7 +6,7 @@
 
 #include "uci/base/AbstractServiceBusConnection.h"
 #include "uci/base/ExternalizerLoader.h"
-#include "uci/type/ActionCommandMT.h"
+#include "uci/type/ServiceStatusMT.h"
 
 #include <string>
 #include <vector>
@@ -22,9 +22,9 @@ public:
     uci::base::AbstractServiceBusConnectionStatusData lastStatus;
 };
 
-class ActionCommandListener final : public uci::type::ActionCommandMT::Listener {
+class ServiceStatusListener final : public uci::type::ServiceStatusMT::Listener {
 public:
-    void handleMessage(const uci::type::ActionCommandMT& message) override {
+    void handleMessage(const uci::type::ServiceStatusMT& message) override {
         lastType = message.typeName();
     }
 
@@ -50,21 +50,21 @@ void exercise_spec_api_surface()
     (void)asb->getOMSApiVersion();
     (void)asb->getAbstractServiceBusConnectionVersion();
 
-    auto& reader = uci::type::ActionCommandMT::createReader("ActionCommand", asb);
-    auto& writer = uci::type::ActionCommandMT::createWriter("ActionCommand", asb);
+    auto& reader = uci::type::ServiceStatusMT::createReader("ServiceStatus", asb);
+    auto& writer = uci::type::ServiceStatusMT::createWriter("ServiceStatus", asb);
 
-    ActionCommandListener actionListener;
+    ServiceStatusListener actionListener;
     reader.addListener(actionListener);
     (void)reader.readNoWait(1, actionListener);
 
-    auto& message = uci::type::ActionCommandMT::create(asb);
+    auto& message = uci::type::ServiceStatusMT::create(asb);
     writer.write(message);
 
     reader.removeListener(actionListener);
     writer.close();
     reader.close();
-    uci::type::ActionCommandMT::destroyWriter(writer);
-    uci::type::ActionCommandMT::destroyReader(reader);
+    uci::type::ServiceStatusMT::destroyWriter(writer);
+    uci::type::ServiceStatusMT::destroyReader(reader);
 
     asb->removeStatusListener(statusListener);
     asb->shutdown();
@@ -78,7 +78,7 @@ void exercise_spec_api_surface()
     loader->destroyExternalizer(externalizer);
     uci_destroyExternalizerLoader(loader);
 
-    uci::type::ActionCommandMT::destroy(message);
+    uci::type::ServiceStatusMT::destroy(message);
 }
 
 } // namespace

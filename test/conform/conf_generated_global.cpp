@@ -3,12 +3,12 @@
 #include "uci/base/Listener.h"
 #include "uci/base/Reader.h"
 #include "uci/base/Writer.h"
-#include "uci/type/ActionCommandMT.h"
+#include "uci/type/ServiceStatusMT.h"
 
 #include <string>
 #include <type_traits>
 
-using Msg = uci::type::ActionCommandMT;
+using Msg = uci::type::ServiceStatusMT;
 using Listener = Msg::Listener;
 using Reader = Msg::Reader;
 using Writer = Msg::Writer;

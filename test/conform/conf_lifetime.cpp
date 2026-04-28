@@ -7,7 +7,7 @@
 #include "uci/base/Reader.h"
 #include "uci/base/StringAccessor.h"
 #include "uci/base/Writer.h"
-#include "uci/type/ActionCommandMT.h"
+#include "uci/type/ServiceStatusMT.h"
 
 #include <type_traits>
 
@@ -26,9 +26,9 @@ static_assert(!std::is_destructible_v<uci::base::Externalizer>,
 static_assert(!std::is_destructible_v<uci::base::ExternalizerLoader>,
     "ExternalizerLoader destructor must be protected");
 
-static_assert(!std::is_destructible_v<uci::type::ActionCommandMT::Reader>,
+static_assert(!std::is_destructible_v<uci::type::ServiceStatusMT::Reader>,
     "Generated message Reader destructor must be protected");
-static_assert(!std::is_destructible_v<uci::type::ActionCommandMT::Writer>,
+static_assert(!std::is_destructible_v<uci::type::ServiceStatusMT::Writer>,
     "Generated message Writer destructor must be protected");
 
 static_assert(std::has_virtual_destructor_v<uci::base::Listener>,

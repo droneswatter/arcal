@@ -189,7 +189,7 @@ uci::base::UUID sendStartCommand(uci::base::AbstractServiceBusConnection* asb,
                                                      "Start SMTI command");
     capabilityCommand.getCommandState() = uci::type::CommandStateEnum::NEW;
     uci::utils::setId(capabilityCommand.getCapabilityID(), capabilityUuid, kCapabilityName);
-    capabilityCommand.getRanking().getRank().getPriority().setValue(1);
+    capabilityCommand.getRanking().getRank().getPriority() = 1;
 
     writer->write(*message);
     std::cout << "client: sent start SMTI_Command commandUUID=" << commandUuid.toString()

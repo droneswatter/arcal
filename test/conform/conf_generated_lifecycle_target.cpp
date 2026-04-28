@@ -4,15 +4,15 @@
 // accessors must satisfy after the interface/implementation split.
 
 #include "uci/base/AbstractServiceBusConnection.h"
-#include "uci/type/ActionCommandMT.h"
-#include "uci/type/CapabilityBaseType.h"
+#include "uci/type/ServiceStatusMT.h"
+#include "uci/type/SystemStatusMDT.h"
 
 #include <type_traits>
 
 namespace {
 
-using GlobalMsg = uci::type::ActionCommandMT;
-using Complex = uci::type::CapabilityBaseType;
+using GlobalMsg = uci::type::ServiceStatusMT;
+using Complex = uci::type::SystemStatusMDT;
 
 static_assert(!std::is_constructible_v<GlobalMsg>,
     "generated global message accessors must not be publicly default-constructible");

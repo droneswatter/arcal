@@ -38,7 +38,7 @@ using Clock = std::chrono::steady_clock;
 
 void setId(uci::type::ID_Type& id, const uci::base::UUID& uuid, const std::string& label) {
     id.setUUID(uuid);
-    id.enableDescriptiveLabel().setValue(label);
+    id.enableDescriptiveLabel() = label;
 }
 
 uci::base::UUID newUuid() {
@@ -271,7 +271,7 @@ void sendStartCommand(uci::base::AbstractServiceBusConnection* asb,
     setId(capabilityCommand.getCommandID(), commandUuid, "Start AMTI command");
     capabilityCommand.getCommandState().setValue(uci::type::CommandStateEnum::NEW);
     setId(capabilityCommand.getCapabilityID(), capabilityUuid, kCapabilityName);
-    capabilityCommand.getRanking().getRank().getPriority().setValue(1);
+    capabilityCommand.getRanking().getRank().getPriority() = 1;
 
     writer.write(message);
     uci::type::AMTI_CommandMT::destroy(message);

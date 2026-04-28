@@ -1,9 +1,9 @@
 // JSON externalizer — field serialization correctness.
 //
 // Verifies that write(accessor, string) produces well-formed JSON containing
-// the expected keys and values for a populated ActionCommandMT message.
+// the expected keys and values for a populated ServiceStatusMT message.
 
-#include "uci/type/ActionCommandMT.h"
+#include "uci/type/ServiceStatusMT.h"
 #include "uci/base/ExternalizerLoader.h"
 #include "uci/base/Externalizer.h"
 #include "uci/base/UCIException.h"
@@ -35,7 +35,7 @@ int main() {
 
     // Populate a message with a known sentinel value.
     static const std::string kSentinel{"arcal-json-sentinel"};
-    auto& msg = uci::type::ActionCommandMT::create(nullptr);
+    auto& msg = uci::type::ServiceStatusMT::create(nullptr);
     msg.getMessageHeader().getSchemaVersion() = kSentinel;
 
     // Serialize to JSON string.
@@ -56,7 +56,7 @@ int main() {
 
     loader->destroyExternalizer(ext);
     uci_destroyExternalizerLoader(loader);
-    uci::type::ActionCommandMT::destroy(msg);
+    uci::type::ServiceStatusMT::destroy(msg);
 
     std::cout << "PASS json_write_fields\n";
     std::cout << "JSON: " << json << "\n";

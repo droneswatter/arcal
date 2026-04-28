@@ -2,10 +2,12 @@
 
 #include "uci/base/Externalizer.h"
 #include "uci/base/ExternalizerLoader.h"
-#include "uci/type/AccelerationChoiceType.h"
-#include "uci/type/AccessAssessmentMT.h"
-#include "uci/type/ActionCommandMT.h"
-#include "uci/type/OrbitChangeCapabilityType.h"
+#include "uci/type/NameValuePairValueType.h"
+#include "uci/type/ServiceStatusMT.h"
+#include "uci/type/ServiceStateEnum.h"
+#include "uci/type/ProcessingStatusEnum.h"
+#include "uci/type/SubsystemStatusMDT.h"
+#include "uci/type/SubsystemStateEnum.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -33,62 +35,65 @@ int main() {
     auto* ext = loader->getExternalizer("JSON", "2.5.0", "2.5.0");
     require(ext != nullptr, "getExternalizer returned null");
 
-    auto& actionIn = uci::type::ActionCommandMT::create(nullptr);
-    actionIn.getMessageHeader().getSchemaVersion() = "arcal-json-read";
-    auto& actionOut = uci::type::ActionCommandMT::create(nullptr);
-    roundtrip(ext, actionIn, actionOut);
-    require(actionOut.getMessageHeader().getSchemaVersion() == "arcal-json-read",
+    auto& serviceIn = uci::type::ServiceStatusMT::create(nullptr);
+    serviceIn.getMessageHeader().getSchemaVersion() = "arcal-json-read";
+    serviceIn.getMessageData().getTimeUp() = "PT42S";
+    serviceIn.getMessageData().setServiceState(uci::type::ServiceStateEnum::NORMAL);
+    auto& serviceOut = uci::type::ServiceStatusMT::create(nullptr);
+    roundtrip(ext, serviceIn, serviceOut);
+    require(serviceOut.getMessageHeader().getSchemaVersion() == "arcal-json-read",
             "required nested string round-trips");
+    require(serviceOut.getMessageData().getTimeUp() == "PT42S",
+            "required simple restriction round-trips");
 
-    auto& assessmentIn = uci::type::AccessAssessmentMT::create(nullptr);
-    assessmentIn.enableObjectState().setValue(uci::type::ObjectStateEnum::UPDATED);
-    auto& assessmentOut = uci::type::AccessAssessmentMT::create(nullptr);
-    roundtrip(ext, assessmentIn, assessmentOut);
-    require(assessmentOut.hasObjectState(), "optional enum present after round-trip");
-    require(assessmentOut.getObjectState().getValue() == uci::type::ObjectStateEnum::UPDATED,
+    auto& subsystemIn = uci::type::SubsystemStatusMDT::create(nullptr);
+    subsystemIn.enableEraseStatus().setValue(uci::type::ProcessingStatusEnum::COMPLETED);
+    auto& subsystemOut = uci::type::SubsystemStatusMDT::create(nullptr);
+    roundtrip(ext, subsystemIn, subsystemOut);
+    require(subsystemOut.hasEraseStatus(), "optional enum present after round-trip");
+    require(subsystemOut.getEraseStatus().getValue() == uci::type::ProcessingStatusEnum::COMPLETED,
             "optional enum value round-trips");
 
-    auto& listIn = uci::type::OrbitChangeCapabilityType::create(nullptr);
-    auto& cap = uci::type::OrbitChangeCapabilityEnum::create(nullptr);
-    cap.setValue(uci::type::OrbitChangeCapabilityEnum::SPECIFIC_ORBIT);
-    listIn.getCapabilityType().push_back(cap);
-    cap.setValue(uci::type::OrbitChangeCapabilityEnum::RENDEZVOUS);
-    listIn.getCapabilityType().push_back(cap);
-    auto& listOut = uci::type::OrbitChangeCapabilityType::create(nullptr);
-    roundtrip(ext, listIn, listOut);
-    require(listOut.getCapabilityType().size() == 2, "bounded enum list size round-trips");
-    require(listOut.getCapabilityType()[0].getValue() == uci::type::OrbitChangeCapabilityEnum::SPECIFIC_ORBIT,
+    auto& state1 = uci::type::SubsystemStateEnum::create(nullptr);
+    auto& state2 = uci::type::SubsystemStateEnum::create(nullptr);
+    state1.setValue(uci::type::SubsystemStateEnum::STANDBY);
+    state2.setValue(uci::type::SubsystemStateEnum::OPERATE);
+    subsystemIn.getCommandableSubsystemState().push_back(state1);
+    subsystemIn.getCommandableSubsystemState().push_back(state2);
+    roundtrip(ext, subsystemIn, subsystemOut);
+    require(subsystemOut.getCommandableSubsystemState().size() == 2,
+            "bounded enum list size round-trips");
+    require(subsystemOut.getCommandableSubsystemState()[0].getValue() == uci::type::SubsystemStateEnum::STANDBY,
             "bounded enum list first value round-trips");
-    require(listOut.getCapabilityType()[1].getValue() == uci::type::OrbitChangeCapabilityEnum::RENDEZVOUS,
+    require(subsystemOut.getCommandableSubsystemState()[1].getValue() == uci::type::SubsystemStateEnum::OPERATE,
             "bounded enum list second value round-trips");
 
-    auto& choiceIn = uci::type::AccelerationChoiceType::create(nullptr);
-    choiceIn.chooseAccelerationValue() = 42.5;
-    auto& choiceOut = uci::type::AccelerationChoiceType::create(nullptr);
+    auto& choiceIn = uci::type::NameValuePairValueType::create(nullptr);
+    choiceIn.chooseDoubleValue() = 42.5;
+    auto& choiceOut = uci::type::NameValuePairValueType::create(nullptr);
     std::string choiceJson;
     ext->write(choiceIn, choiceJson);
     std::vector<uint8_t> choiceBytes(choiceJson.begin(), choiceJson.end());
     ext->read(choiceBytes, choiceOut);
-    require(choiceOut.isAccelerationValue(), "choice variant selected after vector read");
-    require(choiceOut.getAccelerationValue() == 42.5, "choice value round-trips");
+    require(choiceOut.isDoubleValue(), "choice variant selected after vector read");
+    require(choiceOut.getDoubleValue() == 42.5, "choice value round-trips");
 
     std::istringstream stream{choiceJson};
-    auto& streamOut = uci::type::AccelerationChoiceType::create(nullptr);
+    auto& streamOut = uci::type::NameValuePairValueType::create(nullptr);
     ext->read(stream, streamOut);
-    require(streamOut.isAccelerationValue(), "choice variant selected after stream read");
+    require(streamOut.isDoubleValue(), "choice variant selected after stream read");
 
     loader->destroyExternalizer(ext);
     uci_destroyExternalizerLoader(loader);
-    uci::type::AccelerationChoiceType::destroy(streamOut);
-    uci::type::AccelerationChoiceType::destroy(choiceOut);
-    uci::type::AccelerationChoiceType::destroy(choiceIn);
-    uci::type::OrbitChangeCapabilityType::destroy(listOut);
-    uci::type::OrbitChangeCapabilityEnum::destroy(cap);
-    uci::type::OrbitChangeCapabilityType::destroy(listIn);
-    uci::type::AccessAssessmentMT::destroy(assessmentOut);
-    uci::type::AccessAssessmentMT::destroy(assessmentIn);
-    uci::type::ActionCommandMT::destroy(actionOut);
-    uci::type::ActionCommandMT::destroy(actionIn);
+    uci::type::NameValuePairValueType::destroy(streamOut);
+    uci::type::NameValuePairValueType::destroy(choiceOut);
+    uci::type::NameValuePairValueType::destroy(choiceIn);
+    uci::type::SubsystemStateEnum::destroy(state2);
+    uci::type::SubsystemStateEnum::destroy(state1);
+    uci::type::SubsystemStatusMDT::destroy(subsystemOut);
+    uci::type::SubsystemStatusMDT::destroy(subsystemIn);
+    uci::type::ServiceStatusMT::destroy(serviceOut);
+    uci::type::ServiceStatusMT::destroy(serviceIn);
 
     std::cout << "PASS json_read_roundtrip\n";
     return 0;

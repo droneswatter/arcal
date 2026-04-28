@@ -1,10 +1,10 @@
 #include "uci/base/ExternalizerLoader.h"
-#include "uci/type/ActionCommandMT.h"
+#include "uci/type/ServiceStatusMT.h"
 
 #include <iostream>
 
 int main() {
-    auto& message = uci::type::ActionCommandMT::create(nullptr);
+    auto& message = uci::type::ServiceStatusMT::create(nullptr);
     (void)message;
 
     auto* loader = uci_getExternalizerLoader();
@@ -22,7 +22,7 @@ int main() {
 
     loader->destroyExternalizer(externalizer);
     uci_destroyExternalizerLoader(loader);
-    uci::type::ActionCommandMT::destroy(message);
+    uci::type::ServiceStatusMT::destroy(message);
 
     std::cout << "PASS arcal install consumer smoke\n";
     return 0;

@@ -1,7 +1,6 @@
 // Compile-only conformance: UUID API shape (OMSC-SPC-008 RevK).
 
 #include "uci/base/UUID.h"
-#include "uci/type/AtomicValueType.h"
 #include "uci/type/ID_Type.h"
 #include "uci/type/UniversallyUniqueIdentifierType.h"
 
@@ -74,6 +73,3 @@ static_assert(std::is_same_v<decltype(std::declval<uci::type::ID_Type&>().setUUI
 
 static_assert(std::is_same_v<uci::type::UniversallyUniqueIdentifierType, std::string>);
 static_assert(std::is_assignable_v<uci::type::UniversallyUniqueIdentifierType&, const std::string&>);
-
-static_assert(std::is_same_v<decltype(std::declval<uci::type::AtomicValueType&>().chooseUUID_Value()), UUID&>);
-static_assert(std::is_same_v<decltype(std::declval<const uci::type::AtomicValueType&>().getUUID_Value()), const UUID&>);

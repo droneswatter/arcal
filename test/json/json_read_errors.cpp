@@ -3,10 +3,9 @@
 #include "uci/base/Externalizer.h"
 #include "uci/base/ExternalizerLoader.h"
 #include "uci/base/UCIException.h"
-#include "uci/type/AccelerationChoiceType.h"
-#include "uci/type/AtomicValueType.h"
 #include "uci/type/HeaderType.h"
-#include "uci/type/ObjectStateEnum.h"
+#include "uci/type/NameValuePairValueType.h"
+#include "uci/type/SystemStateEnum.h"
 
 #include <cstdlib>
 #include <functional>
@@ -30,9 +29,8 @@ int main() {
     auto* ext = loader->getExternalizer("JSON", "2.5.0", "2.5.0");
 
     auto& header = uci::type::HeaderType::create(nullptr);
-    auto& choice = uci::type::AccelerationChoiceType::create(nullptr);
-    auto& atomic = uci::type::AtomicValueType::create(nullptr);
-    auto& state = uci::type::ObjectStateEnum::create(nullptr);
+    auto& choice = uci::type::NameValuePairValueType::create(nullptr);
+    auto& state = uci::type::SystemStateEnum::create(nullptr);
 
     header.getSystemID().setUUID(uci::base::UUID::createVersion3UUID("json-read-errors-system"));
     header.getTimestamp() = "2026-04-27T00:00:00Z";
@@ -63,7 +61,7 @@ int main() {
         ext->read(wrongSchemaTypeJson, header);
     });
     expect_throw("multiple choice variants", [&] {
-        ext->read("{\"BooleanValue\":true,\"IntValue\":1}", atomic);
+        ext->read("{\"BooleanValue\":true,\"IntValue\":1}", choice);
     });
     expect_throw("invalid enum string", [&] {
         ext->read("\"NOT_A_STATE\"", state);
@@ -71,9 +69,8 @@ int main() {
 
     loader->destroyExternalizer(ext);
     uci_destroyExternalizerLoader(loader);
-    uci::type::ObjectStateEnum::destroy(state);
-    uci::type::AtomicValueType::destroy(atomic);
-    uci::type::AccelerationChoiceType::destroy(choice);
+    uci::type::SystemStateEnum::destroy(state);
+    uci::type::NameValuePairValueType::destroy(choice);
     uci::type::HeaderType::destroy(header);
 
     if (failures) {
