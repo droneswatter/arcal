@@ -5,14 +5,14 @@
 
 #include "uci/base/AbstractServiceBusConnection.h"
 #include "uci/type/ActionCommandMT.h"
-#include "uci/type/AccelerationType.h"
+#include "uci/type/CapabilityBaseType.h"
 
 #include <type_traits>
 
 namespace {
 
 using GlobalMsg = uci::type::ActionCommandMT;
-using Complex = uci::type::AccelerationType;
+using Complex = uci::type::CapabilityBaseType;
 
 static_assert(!std::is_constructible_v<GlobalMsg>,
     "generated global message accessors must not be publicly default-constructible");

@@ -32,6 +32,10 @@ if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS OR ARCAL_BUILD_INSTALL_TESTS)
     enable_testing()
 endif()
 
+if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
+    add_custom_target(arcal_test_suite_all)
+endif()
+
 # ---------------------------------------------------------------------------
 # IDL Compiler — arcal_payload.idl → C/C++ type support
 # ---------------------------------------------------------------------------
@@ -450,7 +454,26 @@ endif()
 # Tests
 # ---------------------------------------------------------------------------
 
+if(NOT DEFINED ARCAL_CERT_CAL_LIB OR ARCAL_CERT_CAL_LIB STREQUAL "")
+    set(ARCAL_CERT_CAL_LIB "arcal" CACHE STRING "")
+endif()
+
+set(ARCAL_STANDALONE_TEST_CAL_LIB "${ARCAL_CERT_CAL_LIB}")
+if(ARCAL_STANDALONE_TEST_CAL_LIB STREQUAL "arcal")
+    set(ARCAL_STANDALONE_TEST_JSON_PLUGIN "arcal_externalizer_json")
+else()
+    set(ARCAL_STANDALONE_TEST_JSON_PLUGIN "${ARCAL_STANDALONE_TEST_CAL_LIB}_externalizer_json")
+endif()
+
 if(ARCAL_BUILD_TESTS)
+    if(NOT TARGET ${ARCAL_STANDALONE_TEST_CAL_LIB})
+        message(FATAL_ERROR
+            "Standalone test CAL target '${ARCAL_STANDALONE_TEST_CAL_LIB}' is not defined.")
+    endif()
+    if(NOT TARGET ${ARCAL_STANDALONE_TEST_JSON_PLUGIN})
+        message(FATAL_ERROR
+            "Standalone test JSON plugin target '${ARCAL_STANDALONE_TEST_JSON_PLUGIN}' is not defined.")
+    endif()
     add_subdirectory(test/conform)
     add_subdirectory(test/config)
     add_subdirectory(test/json)
@@ -458,9 +481,6 @@ if(ARCAL_BUILD_TESTS)
 endif()
 
 if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS)
-    if(NOT DEFINED ARCAL_CERT_CAL_LIB OR ARCAL_CERT_CAL_LIB STREQUAL "")
-        set(ARCAL_CERT_CAL_LIB "arcal" CACHE STRING "")
-    endif()
     set(ARCAL_CERT_BUILD_CERT       ${ARCAL_BUILD_TESTS}     CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_BUILD_E2E        ${ARCAL_BUILD_E2E_TESTS} CACHE BOOL   "" FORCE)
     set(ARCAL_CERT_TEST_ENV

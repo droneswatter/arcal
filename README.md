@@ -220,17 +220,20 @@ cmake -S . -B build-subset-cert \
   -G Ninja
 ```
 
-Build the subset CAL and the full `arcal-cert` suite against it:
+Build the subset CAL and the full standalone + `arcal-cert` test suite against it:
 
 ```bash
-cmake --build build-subset-cert --target arcal_cert_suite_all -j4
-ctest --test-dir build-subset-cert -R "^(CERT|E2E)-" --output-on-failure
+cmake --build build-subset-cert --target arcal_test_suite_all -j4
+ctest --test-dir build-subset-cert --output-on-failure
 ```
 
 If you want to exercise the runtime `CERT` and `E2E` coverage without the
 compile-only conformance checks, add `-DARCAL_CERT_BUILD_COMPILE=OFF` at
 configure time. This is useful while generator conformance work is still in
 progress.
+
+If you only want the injectable `arcal-cert` suite, `arcal_cert_suite_all`
+still builds just that narrower target set.
 
 ### Cleaning generated code
 

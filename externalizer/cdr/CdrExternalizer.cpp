@@ -1,7 +1,6 @@
 #include "CdrExternalizer.h"
 #include "CdrRegistry.h"
 #include "CdrPrimitives.h"
-#include "arcal/TypedAccessor.h"
 #include "uci/base/UCIException.h"
 
 #include <algorithm>
@@ -45,23 +44,17 @@ void CdrExternalizer::write(const uci::base::Accessor& type, std::string& str) {
 
 void CdrExternalizer::read(const std::vector<uint8_t>& vec, uci::base::Accessor& type) {
     try {
-        const auto& typed = dynamic_cast<const arcal::type::TypedAccessor&>(type);
-        CdrRegistry::instance().lookupByTag(typed.typeTag()).deserialize(vec, type);
+        CdrRegistry::instance().lookupByTag(type.getAccessorType()).deserialize(vec, type);
     } catch (const std::runtime_error& e) {
         throwUciException("CdrExternalizer::read: " << e.what());
-    } catch (const std::bad_cast&) {
-        throwUciException("CdrExternalizer::read: accessor is not an ARCAL typed accessor");
     }
 }
 
 void CdrExternalizer::write(const uci::base::Accessor& type, std::vector<uint8_t>& vec) {
     try {
-        const auto& typed = dynamic_cast<const arcal::type::TypedAccessor&>(type);
-        CdrRegistry::instance().lookupByTag(typed.typeTag()).serialize(type, vec);
+        CdrRegistry::instance().lookupByTag(type.getAccessorType()).serialize(type, vec);
     } catch (const std::runtime_error& e) {
         throwUciException("CdrExternalizer::write: " << e.what());
-    } catch (const std::bad_cast&) {
-        throwUciException("CdrExternalizer::write: accessor is not an ARCAL typed accessor");
     }
 }
 

@@ -350,7 +350,7 @@ tested.
 ### Findings — FAIL (3 systematic violations, 420 files)
 - **V1 — Enum name and value naming (CXX-007137/007138):** Enum named `<TypeName>ChoiceOrdinalEnum` instead of `<TypeName>Choice`. Values use `CHOICE_<ELEMENT>` / `CHOICE_NONE` without type-name prefix. `CHOICE_NONE` is the **last** enumerator (implicit value = element count) instead of the required `= 0` sentinel as first.
 - **V2 — `set<TypeName>ChoiceOrdinal()` absent entirely:** No choice header has this method. Spec requires `virtual void set<TypeName>ChoiceOrdinal(<TypeName>Choice, AccessorType = null) = 0`.
-- **V3 — `choose<ElementName>()` missing optional `AccessorType` parameter (CXX-012696):** All `choose*()` take no arguments. Spec requires `AccessorType = null` optional param for complex-typed choice elements.
+- **V3 — `choose<ElementName>()` missing optional `AccessorType` parameter (CXX-012696):** Complex-typed `choose*()` must expose `AccessorType = null`; simple-restriction choice branches such as `EmptyType` remain zero-argument.
 **Spec:** §12543–12895 "The Choice Accessor"
 (CERT CXX-007137, CXX-007138, and choice method CERTs in that section)
 

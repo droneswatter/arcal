@@ -1,3 +1,6 @@
 add_executable(cdr_roundtrip cdr_roundtrip.cpp)
-target_link_libraries(cdr_roundtrip PRIVATE arcal)
+target_link_libraries(cdr_roundtrip PRIVATE ${ARCAL_STANDALONE_TEST_CAL_LIB})
+if(TARGET arcal_test_suite_all)
+    add_dependencies(arcal_test_suite_all cdr_roundtrip)
+endif()
 add_test(NAME CDR-roundtrip COMMAND cdr_roundtrip)

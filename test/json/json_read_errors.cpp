@@ -7,7 +7,6 @@
 #include "uci/type/AtomicValueType.h"
 #include "uci/type/HeaderType.h"
 #include "uci/type/ObjectStateEnum.h"
-#include "uci/type/UCI_SchemaVersionStringType.h"
 
 #include <cstdlib>
 #include <functional>
@@ -34,7 +33,22 @@ int main() {
     auto& choice = uci::type::AccelerationChoiceType::create(nullptr);
     auto& atomic = uci::type::AtomicValueType::create(nullptr);
     auto& state = uci::type::ObjectStateEnum::create(nullptr);
-    auto& schemaVersion = uci::type::UCI_SchemaVersionStringType::create(nullptr);
+
+    header.getSystemID().setUUID(uci::base::UUID::createVersion3UUID("json-read-errors-system"));
+    header.getTimestamp() = "2026-04-27T00:00:00Z";
+    header.getSchemaVersion() = "2.5.0";
+    header.setMode(uci::type::MessageModeEnum::LIVE);
+
+    std::string validHeaderJson;
+    ext->write(header, validHeaderJson);
+    std::string wrongSchemaTypeJson = validHeaderJson;
+    const std::string quotedSchemaVersion = "\"SchemaVersion\":\"2.5.0\"";
+    const auto schemaPos = wrongSchemaTypeJson.find(quotedSchemaVersion);
+    if (schemaPos == std::string::npos) {
+        std::cerr << "FAIL: could not locate SchemaVersion in serialized header\n";
+        return 1;
+    }
+    wrongSchemaTypeJson.replace(schemaPos, quotedSchemaVersion.size(), "\"SchemaVersion\":42");
 
     expect_throw("malformed JSON", [&] {
         ext->read("{", header);
@@ -46,7 +60,7 @@ int main() {
         ext->read("{}", header);
     });
     expect_throw("wrong primitive type", [&] {
-        ext->read("42", schemaVersion);
+        ext->read(wrongSchemaTypeJson, header);
     });
     expect_throw("multiple choice variants", [&] {
         ext->read("{\"BooleanValue\":true,\"IntValue\":1}", atomic);
@@ -57,7 +71,6 @@ int main() {
 
     loader->destroyExternalizer(ext);
     uci_destroyExternalizerLoader(loader);
-    uci::type::UCI_SchemaVersionStringType::destroy(schemaVersion);
     uci::type::ObjectStateEnum::destroy(state);
     uci::type::AtomicValueType::destroy(atomic);
     uci::type::AccelerationChoiceType::destroy(choice);

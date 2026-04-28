@@ -112,7 +112,7 @@ static bool test_list() {
 
 static bool test_choice_scalar() {
     auto& src = uci::type::AccelerationChoiceType::create(nullptr);
-    src.chooseAccelerationValue().setValue(9.81);
+    src.chooseAccelerationValue() = 9.81;
     std::vector<uint8_t> buf;
     cdr()->write(src, buf);
 
@@ -125,7 +125,7 @@ static bool test_choice_scalar() {
         uci::type::AccelerationChoiceType::destroy(src);
         return false;
     }
-    if (std::abs(dst.getAccelerationValue().getValue() - 9.81) > 1e-9) {
+    if (std::abs(dst.getAccelerationValue() - 9.81) > 1e-9) {
         std::cerr << "choice_scalar: wrong value\n";
         uci::type::AccelerationChoiceType::destroy(dst);
         uci::type::AccelerationChoiceType::destroy(src);
@@ -141,8 +141,8 @@ static bool test_choice_scalar() {
 static bool test_choice_struct() {
     auto& src = uci::type::AccelerationChoiceType::create(nullptr);
     auto& range = src.chooseAccelerationValueRange();
-    range.enableMinimumAcceleration().setValue(1.0);
-    range.enableMaximumAcceleration().setValue(5.0);
+    range.enableMinimumAcceleration() = 1.0;
+    range.enableMaximumAcceleration() = 5.0;
     std::vector<uint8_t> buf;
     cdr()->write(src, buf);
 
@@ -162,8 +162,8 @@ static bool test_choice_struct() {
         uci::type::AccelerationChoiceType::destroy(src);
         return false;
     }
-    if (std::abs(r.getMinimumAcceleration().getValue() - 1.0) > 1e-9 ||
-        std::abs(r.getMaximumAcceleration().getValue() - 5.0) > 1e-9) {
+    if (std::abs(r.getMinimumAcceleration() - 1.0) > 1e-9 ||
+        std::abs(r.getMaximumAcceleration() - 5.0) > 1e-9) {
         std::cerr << "choice_struct: subfield values wrong\n";
         uci::type::AccelerationChoiceType::destroy(dst);
         uci::type::AccelerationChoiceType::destroy(src);

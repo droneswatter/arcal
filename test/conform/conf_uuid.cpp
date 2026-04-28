@@ -72,14 +72,8 @@ static_assert(std::is_same_v<decltype(std::declval<const uci::type::ID_Type&>().
 static_assert(std::is_same_v<decltype(std::declval<uci::type::ID_Type&>().setUUID(std::declval<const UUID&>())),
                              uci::type::ID_Type&>);
 
-static_assert(std::is_same_v<decltype(std::declval<const uci::type::UniversallyUniqueIdentifierType&>().getValue()),
-                             const UUID&>);
-static_assert(std::is_same_v<decltype(std::declval<uci::type::UniversallyUniqueIdentifierType&>().setValue(std::declval<const UUID&>())),
-                             void>);
-static_assert(std::is_same_v<decltype(std::declval<uci::type::UniversallyUniqueIdentifierType&>() = std::declval<const UUID&>()),
-                             uci::type::UniversallyUniqueIdentifierType&>);
-static_assert(std::is_same_v<decltype(static_cast<UUID>(std::declval<const uci::type::UniversallyUniqueIdentifierType&>())),
-                             UUID>);
+static_assert(std::is_same_v<uci::type::UniversallyUniqueIdentifierType, std::string>);
+static_assert(std::is_assignable_v<uci::type::UniversallyUniqueIdentifierType&, const std::string&>);
 
 static_assert(std::is_same_v<decltype(std::declval<uci::type::AtomicValueType&>().chooseUUID_Value()), UUID&>);
 static_assert(std::is_same_v<decltype(std::declval<const uci::type::AtomicValueType&>().getUUID_Value()), const UUID&>);

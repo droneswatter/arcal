@@ -14,7 +14,7 @@ inline void setId(uci::type::ID_Type& id, const uci::base::UUID& uuid) {
 
 inline void setId(uci::type::ID_Type& id, const uci::base::UUID& uuid, const std::string& label) {
     setId(id, uuid);
-    id.enableDescriptiveLabel().setValue(label);
+    id.enableDescriptiveLabel() = label;
 }
 
 inline void setId(uci::type::ID_Type& id, const std::string& uuid) {
@@ -34,7 +34,7 @@ inline uci::base::UUID assignNewId(uci::type::ID_Type& id) {
 inline uci::base::UUID assignNewId(uci::type::ID_Type& id, const std::string& label) {
     const auto uuid = uci::base::UUID::generateUUID();
     id.setUUID(uuid);
-    id.enableDescriptiveLabel().setValue(label);
+    id.enableDescriptiveLabel() = label;
     return uuid;
 }
 

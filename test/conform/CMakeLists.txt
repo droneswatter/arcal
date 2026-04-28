@@ -26,7 +26,7 @@ target_include_directories(arcal_conform PRIVATE
 # the free functions — no link needed, just the include path above.
 
 add_executable(arcal_conform_client_link conform_client_link.cpp)
-target_link_libraries(arcal_conform_client_link PRIVATE arcal)
+target_link_libraries(arcal_conform_client_link PRIVATE ${ARCAL_STANDALONE_TEST_CAL_LIB})
 target_include_directories(arcal_conform_client_link PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
@@ -34,6 +34,9 @@ target_include_directories(arcal_conform_client_link PRIVATE
 add_custom_target(arcal_conformance ALL
     DEPENDS arcal_conform arcal_conform_client_link
 )
+if(TARGET arcal_test_suite_all)
+    add_dependencies(arcal_test_suite_all arcal_conformance)
+endif()
 
 add_test(NAME CONFORM-client-link COMMAND arcal_conform_client_link)
 set_tests_properties(CONFORM-client-link PROPERTIES

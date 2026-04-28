@@ -34,10 +34,10 @@ int main() {
     require(ext != nullptr, "getExternalizer returned null");
 
     auto& actionIn = uci::type::ActionCommandMT::create(nullptr);
-    actionIn.getMessageHeader().getSchemaVersion().setValue("arcal-json-read");
+    actionIn.getMessageHeader().getSchemaVersion() = "arcal-json-read";
     auto& actionOut = uci::type::ActionCommandMT::create(nullptr);
     roundtrip(ext, actionIn, actionOut);
-    require(actionOut.getMessageHeader().getSchemaVersion().getValue() == "arcal-json-read",
+    require(actionOut.getMessageHeader().getSchemaVersion() == "arcal-json-read",
             "required nested string round-trips");
 
     auto& assessmentIn = uci::type::AccessAssessmentMT::create(nullptr);
@@ -63,14 +63,14 @@ int main() {
             "bounded enum list second value round-trips");
 
     auto& choiceIn = uci::type::AccelerationChoiceType::create(nullptr);
-    choiceIn.chooseAccelerationValue().setValue(42.5);
+    choiceIn.chooseAccelerationValue() = 42.5;
     auto& choiceOut = uci::type::AccelerationChoiceType::create(nullptr);
     std::string choiceJson;
     ext->write(choiceIn, choiceJson);
     std::vector<uint8_t> choiceBytes(choiceJson.begin(), choiceJson.end());
     ext->read(choiceBytes, choiceOut);
     require(choiceOut.isAccelerationValue(), "choice variant selected after vector read");
-    require(choiceOut.getAccelerationValue().getValue() == 42.5, "choice value round-trips");
+    require(choiceOut.getAccelerationValue() == 42.5, "choice value round-trips");
 
     std::istringstream stream{choiceJson};
     auto& streamOut = uci::type::AccelerationChoiceType::create(nullptr);
