@@ -463,12 +463,12 @@ class SchemaParser:
         """Returns (iface_cxx_type, typedef_elem_cxx_type) for BoundedList fields."""
         if field.type_is_simple_restriction and field.type_name in self.types:
             t = self.types[field.type_name]
-            return (t.base_type, t.restriction_alias_target)
+            return (t.restriction_alias_target, t.restriction_alias_target)
         if field.is_text_primitive or field.type_is_string_restriction:
             return ("std::string", "xs::String")
         if field.is_scalar_primitive:
             wrapper = SCALAR_BOUNDED_LIST_ELEM_TYPE_MAP.get(field.cxx_type, field.cxx_type)
-            return (field.cxx_type, wrapper)
+            return (wrapper, wrapper)
         if field.is_uuid:
             return (field.cxx_type, field.cxx_type)
         if field.type_is_generated:
@@ -480,10 +480,12 @@ class SchemaParser:
     def _get_bounded_list_storage_type(self, field: "FieldModel") -> str:
         """Returns StorageT for BoundedListImpl."""
         if field.type_is_simple_restriction and field.type_name in self.types:
-            return self.types[field.type_name].base_type
+            return self.types[field.type_name].restriction_alias_target
         if field.is_text_primitive or field.type_is_string_restriction:
             return "std::string"
-        if field.is_scalar_primitive or field.is_uuid:
+        if field.is_scalar_primitive:
+            return SCALAR_BOUNDED_LIST_ELEM_TYPE_MAP.get(field.cxx_type, field.cxx_type)
+        if field.is_uuid:
             return field.cxx_type
         if field.type_is_generated:
             return f"arcal::type::{field.cxx_type}Impl"
@@ -660,7 +662,9 @@ class SchemaParser:
         if enum_values:
             return TypeModel(name, enum_values=enum_values)
 
-        # Non-enumeration restriction: generate a typedef alias, not an accessor class.
+        # Non-enumeration restriction: generate a typedef alias to the matching
+        # primitive accessor interface. The companion *Value alias remains the
+        # raw xs::* value type.
         base = restriction.get("base", "xs:string").split(":")[-1]
         resolved = UUID_CXX_TYPE if name == UUID_TYPE_NAME else CXX_PRIMITIVE_MAP.get(base, "std::string")
         return TypeModel(
@@ -1327,7 +1331,7 @@ def _qualify_filter(cxx_type: str, primitive_types: set, type_name: str) -> str:
 def _storage_qualify_filter(field: FieldModel, primitive_types: set) -> str:
     """Return the concrete ARCAL storage type for a generated field/variant."""
     if field.type_is_simple_restriction:
-        return field.restriction_cxx_base_type
+        return _qualify_filter(field.cxx_type, primitive_types, field.type_name)
     if field.type_name in primitive_types:
         return field.cxx_type
     if field.type_is_generated:

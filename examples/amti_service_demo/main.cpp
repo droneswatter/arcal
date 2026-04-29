@@ -271,7 +271,7 @@ void sendStartCommand(uci::base::AbstractServiceBusConnection* asb,
     setId(capabilityCommand.getCommandID(), commandUuid, "Start AMTI command");
     capabilityCommand.getCommandState().setValue(uci::type::CommandStateEnum::NEW);
     setId(capabilityCommand.getCapabilityID(), capabilityUuid, kCapabilityName);
-    capabilityCommand.getRanking().getRank().getPriority() = 1;
+    capabilityCommand.getRanking().getRank().getPriority().setValue(1);
 
     writer.write(message);
     uci::type::AMTI_CommandMT::destroy(message);
