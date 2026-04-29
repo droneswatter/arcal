@@ -455,14 +455,144 @@ For each `xs:element` (global — maps to `*MT.h`):
 
 ---
 
+## TASK-011 — `uci::base::Accessor` Class Shape
+**Status:** `done`
+**Test written:** `arcal/test/arcal-cert/compile/conf_accessor_base.cpp`
+
+### Findings — PASS
+
+All 7 CERTs satisfied. `getAccessorType()` uses modern `noexcept` instead of C++03-style `throw()` — semantically equivalent, not a violation.
+**Spec:** §2996–3256 "The Accessor Class"
+(CERT CXX-004987, CXX-011090, CXX-004993, CXX-004997, CXX-004998, CXX-004999, CXX-011148)
+
+---
+
+## TASK-012 — `uci::base::StringAccessor` Class Shape
+**Status:** `done`
+**Test written:** `arcal/test/arcal-cert/compile/conf_string_accessor.cpp`
+
+### Findings — FAIL
+
+- **V1 — `str()` returns `const std::string&` instead of `std::string` (CXX-005008):** Spec requires by-value return; header returns a reference.
+- **V2 — `setStringValue(const std::string&)` returns `void` instead of `StringAccessor&` (CXX-011141):** Breaks chaining.
+- **V3 — `setStringValue(const char*)` returns `void` instead of `StringAccessor&` (CXX-011142):** Same issue.
+
+All other CERTs pass (inheritance, protected dtor, `c_str()`, operator= overloads, protected ctor/copy-ctor).
+**Spec:** §3257–3645 "The StringAccessor Class"
+(CERT CXX-005002, CXX-012700, CXX-005008, CXX-005009, CXX-011141, CXX-011142)
+
+---
+
+## TASK-013 — `uci::base::SimpleList` Template Shape
+**Status:** `done`
+**Test written:** `arcal/test/arcal-cert/compile/conf_simple_list.cpp`
+
+### Findings — PASS
+
+All 26 CERTs satisfied. One spec narrative typo noted: `push_back` written as `const` in narrative text but CERT and header correctly omit `const`. Not a violation.
+**Spec:** §3646–4528 "The SimpleList Template"
+(CERT CXX-005049, CXX-005054, CXX-011156/157, CXX-005056, CXX-012701, CXX-005152/159, CXX-011180, CXX-005061–011179 series)
+
+---
+
+## TASK-014 — `uci::base::BoundedList` Template Shape
+**Status:** `done`
+**Test written:** `arcal/test/arcal-cert/compile/conf_bounded_list_shape.cpp`
+
+### Findings — PARTIAL
+
+- **V1 — `push_back(U&&)` lacks SFINAE guard (CXX-012971):** Spec requires constraint `IsAssignable<T,U> && !IsReference<U>`; header uses unconstrained universal-ref template.
+- **V2 — Missing separate `push_back(const U&)` overload (CXX-013010):** Absorbed by the universal-ref template instead of declared as distinct overload.
+
+All 25 other CERTs pass (typedefs, bounds methods, iterators, operator[], at(), clear(), resize(), protected ctor/copy-ctor/dtor).
+**Spec:** §4529–5574 "The BoundedList Template"
+(CERT CXX-005168, CXX-005172, CXX-011183/184, CXX-005174, CXX-012702, CXX-005275/282, CXX-011192, CXX-005179–011191 series, CXX-012971, CXX-013010)
+
+---
+
+## TASK-015 — `uci::base::UUID` Class Shape
+**Status:** `done`
+**Test written:** `arcal/test/arcal-cert/compile/conf_uuid_class.cpp`
+
+### Findings — PARTIAL
+
+- **V1 — Two separate constructors instead of one (CXX-012628):** Spec requires `explicit UUID(const ValueUUID& = ValueUUID())` as a single defaulted overload. Header declares `UUID()` and `explicit UUID(const ValueUUID&)` separately — structurally non-conformant but functionally equivalent.
+- **V2 — `std::hash` specialization unconditional (CXX-012657):** Spec requires `#if __cplusplus >= 201103L` guard; header omits it. Harmless at C++17 but structurally non-conformant.
+
+All 41 other CERTs pass (toString, fromString, comparison operators, isNil, generate, copy/assignment, etc.).
+**Spec:** §5575–6648 "The UUID Class"
+(CERT CXX-012628, CXX-012657 and 41 others in that section)
+
+---
+
+## TASK-016 — `uci::base::AbstractServiceBusConnection` Class Shape
+**Status:** `done`
+**Test written:** `arcal/test/arcal-cert/compile/conf_asb_connection.cpp`
+
+### Findings — PARTIAL
+
+- **V1 — `AbstractServiceBusConnectionStateEnum` not nested (CXX-011275):** Spec requires public member enum inside `AbstractServiceBusConnection`. Header exposes only `using StateEnum = AbstractServiceBusConnectionStatusData::StateEnum` — wrong qualified name and wrong nesting.
+- **V2 — `AbstractServiceBusConnectionStatusData` not nested (CXX-011277):** Spec requires nested struct. Header exposes only `using StatusData = AbstractServiceBusConnectionStatusData` (standalone type in separate header).
+- **V3/V4 — Consequent (CXX-011279, CXX-011295):** `state` field and `getStatus()` return use alias type names rather than the spec-required nested qualified names. Functionally correct; structurally non-conformant.
+
+All 20 other CERTs pass. Violations documented under `#ifdef CHECK_VIOLATIONS` in test so suite stays green.
+**Spec:** §6649–7310 "The AbstractServiceBusConnection Class"
+(CERT CXX-011275, CXX-011277, CXX-011279, CXX-011295 and 20 others)
+
+---
+
+## TASK-017 — Listener / Reader / Writer Base Classes
+**Status:** `done`
+**Test written:** `arcal/test/arcal-cert/compile/conf_base_reader_writer.cpp`
+
+### Findings — PARTIAL
+
+- **V1 — Reader/Writer dtors are `virtual` (CXX-011094, CXX-011095):** Spec specifies protected non-virtual dtor; headers add `virtual`. Reader/Writer objects are always destroyed through factory methods (`destroyReader`/`destroyWriter`) which know the concrete type — polymorphic deletion never occurs. The `virtual` is therefore unnecessary, adds a vtable slot, and contradicts the spec's intentional design: a protected non-virtual dtor signals "use the factory" and makes `delete &reader` a compile error from outside a derived class.
+- **V2 — `AbstractServiceBusConnectionStatusData` at wrong scope (CXX-011355):** Spec requires `statusChanged` parameter to be `AbstractServiceBusConnection::AbstractServiceBusConnectionStatusData` (nested type). The standalone struct in a separate header is used via type alias instead. Functional match only.
+
+All 16 other CERTs pass (Listener shape, Reader/Writer abstract interface, StatusListener callback, protected ctor/copy-ctor/copy-assignment across all four classes).
+**Spec:** §7311–7784 "The Listener, Reader, Writer, and StatusListener Classes"
+(CERT CXX-010675–011205 series, CXX-011324–011355)
+
+---
+
+## TASK-018 — Externalizer / ExternalizerLoader Classes
+**Status:** `done`
+**Test written:** `arcal/test/arcal-cert/compile/conf_externalizer.cpp`
+
+### Findings — PASS
+
+All 28 CERTs satisfied. Read/write overloads, query methods, version/vendor getters, `getExternalizer`/`destroyExternalizer`, and `extern "C"` free functions (`uci_getExternalizerLoader`, `uci_destroyExternalizerLoader`) all correct. Protected ctor/copy-ctor/op=/dtor on both classes confirmed.
+**Spec:** §7785–8831 "The Externalizer and ExternalizerLoader Classes"
+(CERT CXX-012703, CXX-012308–012294 series, CXX-012338, CXX-012704, CXX-012395–012446 series)
+
+---
+
+## TASK-019 — SimplePrimitive Accessor Classes (`PrimitiveAccessors.h`)
+**Status:** `done`
+**Test written:** `arcal/test/arcal-cert/compile/conf_primitive_accessors.cpp`
+
+### Findings — PARTIAL
+
+- **V1 — Three missing accessor classes (CXX-005765):** `DurationAccessor`, `TimeAccessor`, and `DateTimeAccessor` (all `int64_t`-backed) are absent. `UnsignedLongAccessor` is present but not in Table 9.1-1 (surplus, not a violation).
+- **V2 — `get<T>Value()` methods missing (CXX-005775):** Header provides generic `getValue()` / `getValue(bool) const` returning `const ValueType&`. Type-named getters (`getBooleanValue()`, `getDoubleValue()`, etc.) are not declared.
+- **V3 — `set<T>Value()` wrong signature (CXX-011087):** Header provides `setValue(const ValueType&)` returning `void`. Spec requires named method returning `<T>Accessor&`.
+- **V4 — Conversion operator name mismatch (CXX-011089):** Header declares `operator const ValueType&() const`. Spec requires `operator xs::<T>()` (a distinct operator name in C++; implicit conversion works but explicit `.operator xs::Boolean()` would fail).
+- **V5 — Public ctor/copy-ctor/dtor (implied violation):** Base Accessor pattern requires protected; `PrimitiveAccessor<T,V>` exposes them as public.
+
+Passing: CXX-005765 (class existence and inheritance) for 10 of 13 types, CXX-011088/CXX-013023 (both `operator=` overloads) for all types.
+**Spec:** §10748–10945 "The SimplePrimitive Accessors"
+(CERT CXX-005765, CXX-005775, CXX-011087, CXX-011088, CXX-013023, CXX-011089)
+
+---
+
 ## Cross-cutting notes for all agents
 
 - **Spec path:** `OMS/docs_markdown_unofficial/06_OMSC-SPC-008_RevK_CxxCALSpec_DandD_v2_5.md`
-- **Headers under test:** `arcal/include/uci/type/*.h` (6354 files)
-- **Existing tests:** `arcal/test/conform/` (compile-only `static_assert` style)
-- **Test style:** Prefer compile-time `static_assert` checks. Use a concrete
-  representative type (not all 6354). Include a short comment at the top
-  citing the spec section and CERT ID.
+- **Headers under test:** `arcal/include/uci/type/*.h` (6354 files) for generated types; `arcal/include/uci/base/*.h` for base classes
+- **Existing tests:** `arcal/test/conform/` (compile-only `static_assert` style); `arcal/test/arcal-cert/compile/` (newer cert tests)
+- **Test style:** Prefer compile-time `static_assert` checks. Include a short comment at the top
+  citing the spec section and CERT ID. New tests go in `arcal/test/arcal-cert/compile/`.
 - **Do not modify** generated headers — violations are findings to report, not
   to fix in-place.
 - **Abstract types** (`@abstract='true'` in XSD) do not get `create`/`destroy`;
