@@ -29,67 +29,33 @@ standalone browser monitor roadmap belongs in `../arcal-busmon`.
 - Header-only `uci::utils` C++ helpers and companion SMTI service demo showing
   RAII message/reader/writer ownership, lambda listeners, ID helpers, and enum
   helpers.
+- Strict CAL config UUID resolution with explicit `ARCAL_CONFIG`, optional
+  `ARCAL_SYSTEM`, configured system/service/subsystem/component/capability
+  UUIDs, duplicate-service validation, unknown-service rejection, and explicit
+  `ARCAL_CONFIG=NONE` development fallback.
+- CxxCAL generated accessor conformance: generated accessors are
+  implementation-owned interfaces with protected lifecycle, factory/copy/destroy
+  APIs, abstract-type handling, conforming primitive accessors, and JSON/CDR
+  tests updated to use the public accessor surface.
+- Conformance traceability through the embedded `arcal-cert` submodule,
+  including `CONFORMANCE.md`, CTest labels, portable CERT/E2E tests, and
+  implementation-specific tests kept in `arcal/test/*`.
+- ASBC destructor wakeup: `~DdsAbstractServiceBusConnection()` now notifies the
+  monitor condition variable before joining so destruction does not wait for the
+  monitor loop timeout.
+- Root-level configured services keep and return a nil subsystem UUID because
+  no subsystem association exists.
 
 
-## P0: CAL Config UUIDs
-
-Add to the CAL Config a list of Systems by Name and UUID.
-Each System has a UUID, Services and Subsystems.
-Each Subsystem has a UUID, Capabilities and Services.
-Each Service has a Name and UUID.
-Use one config file that can contain multiple systems. Select the active system
-explicitly, for example with `ARCAL_SYSTEM`, unless the config contains exactly
-one system. Service names must be unique within the selected system. The ASBC
-constructor accepts a Service Name and resolves it within that selected system.
-
-Configured mode is strict:
-- If `ARCAL_CONFIG` points to a config file, unknown service names are rejected.
-- If multiple systems exist and no active system is selected, initialization is
-  rejected.
-- If duplicate service names exist in the selected system, config validation
-  fails.
-- UUIDs for configured systems, services, subsystems, components, and
-  capabilities come from config.
-
-Config-less mode is only allowed by explicit opt-out, such as
-`ARCAL_CONFIG=NONE`. In that mode ARCAL may keep today's deterministic UUID
-fallback for development and tests, but missing or unreadable config must not
-silently fall back to config-less behavior.
-
-## P0: Post-Review Fixes (April 2025)
+## P1: Post-Review Follow-Through (April 2025)
 
 Findings from cross-model review of bd99b57 / a2e1faf / 266f334.
-
-### Must fix
-
-**ASBC destructor stalls up to 2 s per instance**
-`~DdsAbstractServiceBusConnection()` sets `running_ = false` but never calls
-`monitorCv_.notify_all()`. The monitor thread is blocked in `wait_for(2 s,
-predicate)` and will not wake early. The destructor therefore blocks for up to
-2 s per instance. The `cal_config_identity` test creates two live ASBC objects
-that are destroyed without calling `shutdown()` first — adding ~4 s of
-unnecessary latency to that test.
-Fix: have the destructor notify the cv (mirroring the pattern already used in
-`shutdown()`), or have it call `shutdown()` guarded by `shutdownRequested_`.
-
-### Should fix
-
-**Root-level services silently produce a nil subsystem UUID**
-`parseServices(system, …, uci::base::UUID{}, services)` at CalConfig.cpp:157
-gives every service declared directly under a `system` (not under a
-`subsystem`) a default-constructed UUID as its subsystem UUID. This path is
-untested and the nil UUID propagates out of `getMySubsystemUUID()` without
-any warning. Decide whether root-level services are spec-valid; if yes,
-document the nil UUID in CalConfig.h and add a test; if no, add a validation
-error.
 
 **`arcalMakeCdrExternalizer()` is defined but unreachable**
 Defined in `src/dds/CdrBridge.cpp` but not declared in
 `include/arcal/CdrBridge.h`. No other TU can call it. Became dead code once
 the `registerCdrExternalizerFactory` pattern was introduced in bd99b57.
 Remove or declare and call it from the ExternalizerLoader path.
-
-### Nice to have
 
 **CdrRegistry string-based APIs are vestigial**
 `registerHandler()`, `lookup(typeName)`, and `has(typeName)` in CdrRegistry.h
@@ -103,13 +69,6 @@ dispatched via `lookupByTag` during composite serialization. Verify that
 `type_models` covers all types, not only top-level global elements. The
 runtime backstop (`registerByTag` throws on duplicate at static-init time) is
 adequate but a compile-time error is better.
-
-**`ARCAL_SYSTEM` selection has no test coverage**
-`selectSystem()` has four distinct branches; only the single-system auto-select
-path is exercised. Add cases for: (a) multi-system config with correct
-`ARCAL_SYSTEM`, (b) multi-system config with no `ARCAL_SYSTEM` (should fail),
-(c) `ARCAL_SYSTEM` not present in config (should fail), and (d) config file
-path that does not exist.
 
 ## P1: Optional YAML Support for Config File
 
@@ -141,22 +100,11 @@ ctest --test-dir build -R "^(CONFORM|CONFIG|CDR|JSON)-" --output-on-failure
 
 Make `arlacal-server` reliable enough to be the default bridge for tools.
 
-- Add focused unit tests for OWP command handling and error responses.
-- Add protocol/interop fixtures for the supported OWP subset:
-  - valid `INIT`
-  - malformed `INIT`
-  - valid `SUB` / `UNSUB`
-  - valid `XSUB` / `XUNSUB`
-  - duplicate subscription IDs
-  - malformed command lines
-  - disconnect during active session
-- Add tests for `XSUBINFO` behavior and standard `MSG` traffic after wildcard
-  subscription setup.
-- Add tests for malformed `INIT`, duplicate subscription IDs, and unsupported
-  operations.
-- Document the supported OWP subset and ARCAL extensions.
-- Decide whether topic/message discovery is strictly default-topic based or
-  whether DDS-discovered topics can introduce non-default names.
+- Add focused interop tests for OWP error responses:
+  malformed `INIT`, duplicate subscription IDs, malformed command lines,
+  unsupported operations, and disconnect during active session.
+- Add a DDS-backed interop test for `XSUBINFO` behavior and standard `MSG`
+  traffic after wildcard subscription setup.
 
 Verification:
 
@@ -165,47 +113,30 @@ cmake --build build --target arlacal-server lacal_owp_smoke_test
 ctest --test-dir build -R "^LACAL-" --output-on-failure
 ```
 
-## P0: CxxCAL Generated Accessor Conformance
+## P0: Reader History Depth And Burst Delivery
 
-Bring generated `uci::type::*` accessors into the OMSC-SPC-008 RevK lifecycle
-and factory model. This is non-negotiable for CAL interchangeability and for
-implementation-controlled memory management.
+The generated public `createReader()` / `createWriter()` factories currently
+construct `DdsReader` / `DdsWriter` with default `CalQos{}`. That default sets
+`messageBufferDepth = 1`, which maps to DDS `History::KeepLast(1)` for both
+readers and writers. A listener can therefore miss rapidly incoming messages
+before the background reader loop drains DDS. Existing E2E tests work around
+this by interleaving writes and reads.
 
-- Treat public generated `uci::type::*` classes as CxxCAL accessor interfaces,
-  not application-constructible value objects.
-- Move data members into ARCAL-owned generated implementation classes.
-- Make generated accessor constructors, copy constructors, assignment
-  operators, and destructors protected.
-- Add generated `copy(const T&)`, `create(...)`, copy-create, and `destroy(...)`
-  for non-abstract complex accessors.
-- Parse and model XSD `abstract="true"` so abstract accessors do not expose
-  concrete factories.
-- Update CDR/JSON generation and ARCAL tests to use factories or implementation
-  classes instead of stack-constructed public accessors.
-- Track details in [CXX_CAL_SPEC_AUDIT.md](CXX_CAL_SPEC_AUDIT.md).
-
-Verification:
-
-```bash
-cmake --build build --target arcal_conformance
-ctest --test-dir build -R "^(CONFORM|JSON|CDR|E2E|CERT)-" --output-on-failure
-```
-
-## P0: Conformance Traceability
-
-Use `arcal-cert` as the portable requirements surface and keep the embedded
-submodule current.
-
-- Add `CONFORMANCE.md` in `arcal-cert`.
-- Add CTest labels in `arcal-cert` and verify they appear in the parent build.
-- Update `test/arcal-cert` whenever the standalone `arcal-cert` repo advances.
-- Keep implementation-specific tests in `arcal/test/*`, not in `arcal-cert`.
+- Pick a safer default history depth for ordinary readers/listeners.
+- Decide whether writers should use the same default depth or a separate
+  write-history default.
+- Add a public or configuration-driven way to set per-topic QoS, including
+  message buffer depth, without exposing DDS-specific APIs.
+- Add E2E burst tests that write multiple `ServiceStatus` messages rapidly and
+  verify listener and polling readers receive all messages up to the configured
+  depth.
+- Update existing tests and docs to stop relying on interleaved write/read as
+  the only reliable multi-message path.
 
 Verification:
 
 ```bash
-ctest --test-dir build -N
-ctest --test-dir build -R "^(CERT|E2E)-" --output-on-failure
+ctest --test-dir build -R "E2E-(multi-message|listener|two-writers)" --output-on-failure
 ```
 
 ## P1: Packaging Follow-Through

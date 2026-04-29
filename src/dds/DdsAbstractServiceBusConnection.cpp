@@ -44,7 +44,11 @@ DdsAbstractServiceBusConnection::DdsAbstractServiceBusConnection(arcal::config::
 }
 
 DdsAbstractServiceBusConnection::~DdsAbstractServiceBusConnection() {
-    running_ = false;
+    {
+        std::lock_guard<std::mutex> lk(monitorCvMutex_);
+        running_ = false;
+    }
+    monitorCv_.notify_all();
     if (monitorThread_.joinable()) monitorThread_.join();
 }
 
