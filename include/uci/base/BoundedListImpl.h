@@ -56,11 +56,31 @@ public:
             data_.push_back(std::move(item));
         }
     }
-    template <typename U>
+    template <typename U,
+              typename std::enable_if<
+                  !std::is_lvalue_reference<U&&>::value &&
+                  !std::is_base_of<T, typename std::decay<U>::type>::value &&
+                  std::is_assignable<reference, U&&>::value,
+                  int>::type = 0>
     void push_back(U&& v) {
         if (data_.size() >= maxOccurs_)
             throwUciException("BoundedList::push_back exceeds maxOccurs=" << maxOccurs_);
-        data_.push_back(std::forward<U>(v));
+        StorageT item;
+        item = std::move(v);
+        data_.push_back(std::move(item));
+    }
+    template <typename U,
+              typename std::enable_if<
+                  !std::is_same<typename std::decay<U>::type, T>::value &&
+                  !std::is_base_of<T, typename std::decay<U>::type>::value &&
+                  std::is_assignable<reference, const U&>::value,
+                  int>::type = 0>
+    void push_back(const U& v) {
+        if (data_.size() >= maxOccurs_)
+            throwUciException("BoundedList::push_back exceeds maxOccurs=" << maxOccurs_);
+        StorageT item;
+        item = v;
+        data_.push_back(std::move(item));
     }
 
     reference operator[](size_type i) override { return data_[i]; }

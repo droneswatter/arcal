@@ -8,7 +8,7 @@ protected:
     Writer() = default;
     Writer(const Writer&) = default;
     Writer& operator=(const Writer&) = default;
-    virtual ~Writer() = default;
+    ~Writer() = default;
 };
 
 } // namespace base

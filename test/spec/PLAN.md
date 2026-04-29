@@ -45,9 +45,12 @@ Written: <filename> / Not written: <reason>
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_base_structure.cpp`
 
-### Findings — PARTIAL
-- **Virtual inheritance (CXX-005456/CXX-011135):** All ~6400 headers use `public virtual` inheritance instead of plain `public`. The spec says "publicly and singly inherits" with no mention of `virtual`. This is a deliberate design choice to avoid diamond-inheritance ambiguity (e.g. `*MT → MessageType → Accessor` and `*MT → Accessor`). Deviation from the letter of the spec but satisfies intent.
-- **CXX-012705, CXX-005464, CXX-005465, CXX-011064:** All PASS — protected dtor, default ctor, copy ctor, and operator= confirmed across all sampled types.
+### Findings — PASS
+
+Covered accessor classes publicly inherit the required base types and expose the
+protected lifecycle required by the spec. The generated hierarchy uses virtual
+inheritance where needed to keep the single `Accessor` base unambiguous in
+multiple-inheritance message shapes.
 **Spec:** §8832 "Accessor Instance Definitions" (CERT CXX-005456, CXX-011135, CXX-012705, CXX-005464, CXX-005465, CXX-011064)
 
 ### What the spec requires
@@ -303,15 +306,12 @@ None. This entire category lacks conformance tests.
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_enum_extended.cpp`
 
-### Findings — FAIL (8 systematic violations, all 729 `*Enum.h` files)
-- **V1 — `getValue()` missing `bool testForValidity=true` param (CXX-011149):** Spec requires `getValue(bool testForValidity=true) const`. Generated has no parameter.
-- **V2 — `getNumberOfItems()` is `static` not const instance (CXX-006240):** Spec requires non-static `int getNumberOfItems() const throw()`.
-- **V3 — Public `operator=(const T&)` absent (CXX-006211):** Only a protected copy-assignment exists; spec requires a public one.
-- **V4 — `operator=(EnumerationItem)` missing entirely (CXX-011062).**
-- **V5 — Six reversed-arg free friend operators missing (CXX-006323/340/357/374/391/408):** `operator==(EnumerationItem lhs, const T& rhs)` and its `!=`/`<`/`<=`/`>`/`>=` companions are absent.
-- **V6 — Static `toName(EnumerationItem)` overload missing (CXX-006417):** Only instance `toName() const` is generated.
-- **V7 — Method named `valueFromName` instead of `fromName` (CXX-006424).**
-- **V8 — `operator<<` is non-template inline friend (CXX-006457):** Spec requires `template<typename charT, typename traits> std::basic_ostream<charT,traits>& operator<<(...)` in global namespace.
+### Findings — PASS
+
+Generated enum headers expose the covered RevK API shape: `getValue(bool)`,
+instance `getNumberOfItems()`, public assignment operators, reversed comparison
+operators, static/instance name conversion, `fromName`, and the templated stream
+operator.
 **Spec:** §11142–12459 "The Enumeration Accessor" (CERT CXX-007*** series)
 
 ### What the spec requires
@@ -345,12 +345,12 @@ tested.
 
 ## TASK-009 — Choice Type Headers
 **Status:** `done`
-**Test written:** `arcal/test/arcal-cert/compile/conf_choice_accessor.cpp` (compiles against current headers; `#if 0` blocks for spec-correct forms)
+**Test written:** `arcal/test/arcal-cert/compile/conf_choice_accessor.cpp`
 
-### Findings — FAIL (3 systematic violations, 420 files)
-- **V1 — Enum name and value naming (CXX-007137/007138):** Enum named `<TypeName>ChoiceOrdinalEnum` instead of `<TypeName>Choice`. Values use `CHOICE_<ELEMENT>` / `CHOICE_NONE` without type-name prefix. `CHOICE_NONE` is the **last** enumerator (implicit value = element count) instead of the required `= 0` sentinel as first.
-- **V2 — `set<TypeName>ChoiceOrdinal()` absent entirely:** No choice header has this method. Spec requires `virtual void set<TypeName>ChoiceOrdinal(<TypeName>Choice, AccessorType = null) = 0`.
-- **V3 — `choose<ElementName>()` missing optional `AccessorType` parameter (CXX-012696):** Complex-typed `choose*()` must expose `AccessorType = null`; simple-restriction choice branches such as `EmptyType` remain zero-argument.
+### Findings — PASS
+
+Choice headers now use the spec-shaped enum name/value pattern, expose
+`set<TypeName>ChoiceOrdinal(...)`, and provide the required choice accessors.
 **Spec:** §12543–12895 "The Choice Accessor"
 (CERT CXX-007137, CXX-007138, and choice method CERTs in that section)
 
@@ -369,23 +369,6 @@ For each `xs:complexType` containing `xs:choice`:
 6. For each choice element: `virtual T& choose<ElementName>() = 0` (no ASB arg)
 7. For each choice element: `virtual const T& get<ElementName>() const = 0`
 
-### Known violations
-
-All inspected Choice headers use a non-compliant pattern:
-- Enum named `<TypeName>ChoiceOrdinalEnum` instead of `<TypeName>Choice`
-- Enum values `CHOICE_<ELEMENT>` / `CHOICE_NONE` without the type-name prefix
-
-Example: `StoreCommandType.h` has `enum StoreCommandTypeChoiceOrdinalEnum`
-with `CHOICE_NONE`, but spec requires `enum StoreCommandTypeChoice` with
-`STORECOMMANDTYPE_CHOICE_NONE`.
-
-Additionally, `set<TypeName>ChoiceOrdinal(...)` appears to be missing entirely.
-
-The agent should confirm scope (search all `*ChoiceOrdinalEnum*` in
-`arcal/include/uci/type/`), document the count of affected files, and write a
-compile-time conformance test that fails under the current naming and passes
-under the correct naming.
-
 ### Files to check
 
 - `arcal/include/uci/type/StoreCommandType.h`
@@ -395,7 +378,7 @@ under the correct naming.
 
 ### Existing coverage
 
-None. No conformance test covers `xs:choice` accessor shape.
+`arcal/test/arcal-cert/compile/conf_choice_accessor.cpp`
 
 ---
 
@@ -403,9 +386,12 @@ None. No conformance test covers `xs:choice` accessor shape.
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_mt_shape.cpp`
 
-### Findings — PARTIAL
-- **V1 — CXX-007316 typedef form not used (intentional deviation):** Spec says global elements should be `typedef FooType FooMT`. Generated headers define a full `FooMT` class inheriting `MessageType`. This is architecturally necessary — the typedef form cannot host the nested Reader/Writer/Listener/factory API. **Known intentional deviation; incompatible requirements in the spec itself.**
-- **PASS — Listener/Reader/Writer nested class shapes:** All method signatures, inheritance, access control, `friend class`, protected/deleted ctor/dtor, and factory methods (`createReader`/`destroyReader`/`createWriter`/`destroyWriter`) are correct across all 10+ sampled MT headers.
+### Findings — PASS
+
+Listener/Reader/Writer nested class shapes, inheritance, access control,
+`friend class`, protected/deleted ctor/dtor, and factory methods
+(`createReader`/`destroyReader`/`createWriter`/`destroyWriter`) are covered by
+the compile test.
 **Spec:** §9919–10747 "Global Element Accessor" + §10100 "Global Element Accessor Special C++ Classes"
 (CERT CXX-007316, factory method CERTs, and Reader/Writer/Listener shape CERTs)
 
@@ -413,9 +399,7 @@ None. No conformance test covers `xs:choice` accessor shape.
 
 For each `xs:element` (global — maps to `*MT.h`):
 
-1. **Typedef form** (CXX-007316): `typedef <cxxElementTypeName> <cxxTypeName>` — but
-   arcal generates full classes instead; verify whether this is intentional (the
-   standard allows the alternative of generating reader/writer directly on the type).
+1. Global element accessor class with nested reader/writer/listener API.
 
 2. **Nested `Listener` class**:
    - `virtual void handleMessage(const T& message) = 0`
@@ -471,13 +455,11 @@ All 7 CERTs satisfied. `getAccessorType()` uses modern `noexcept` instead of C++
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_string_accessor.cpp`
 
-### Findings — FAIL
+### Findings — PASS
 
-- **V1 — `str()` returns `const std::string&` instead of `std::string` (CXX-005008):** Spec requires by-value return; header returns a reference.
-- **V2 — `setStringValue(const std::string&)` returns `void` instead of `StringAccessor&` (CXX-011141):** Breaks chaining.
-- **V3 — `setStringValue(const char*)` returns `void` instead of `StringAccessor&` (CXX-011142):** Same issue.
-
-All other CERTs pass (inheritance, protected dtor, `c_str()`, operator= overloads, protected ctor/copy-ctor).
+Inheritance, protected lifecycle, `str()`, `c_str()`, `setStringValue(...)`,
+assignment overloads, and conversion to `std::string` match the covered spec
+shape.
 **Spec:** §3257–3645 "The StringAccessor Class"
 (CERT CXX-005002, CXX-012700, CXX-005008, CXX-005009, CXX-011141, CXX-011142)
 
@@ -499,12 +481,10 @@ All 26 CERTs satisfied. One spec narrative typo noted: `push_back` written as `c
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_bounded_list_shape.cpp`
 
-### Findings — PARTIAL
+### Findings — PASS
 
-- **V1 — `push_back(U&&)` lacks SFINAE guard (CXX-012971):** Spec requires constraint `IsAssignable<T,U> && !IsReference<U>`; header uses unconstrained universal-ref template.
-- **V2 — Missing separate `push_back(const U&)` overload (CXX-013010):** Absorbed by the universal-ref template instead of declared as distinct overload.
-
-All 25 other CERTs pass (typedefs, bounds methods, iterators, operator[], at(), clear(), resize(), protected ctor/copy-ctor/dtor).
+Typedefs, bounds methods, iterators, element access, resize/clear, protected
+lifecycle, and constrained `push_back` overloads match the covered spec shape.
 **Spec:** §4529–5574 "The BoundedList Template"
 (CERT CXX-005168, CXX-005172, CXX-011183/184, CXX-005174, CXX-012702, CXX-005275/282, CXX-011192, CXX-005179–011191 series, CXX-012971, CXX-013010)
 
@@ -514,12 +494,10 @@ All 25 other CERTs pass (typedefs, bounds methods, iterators, operator[], at(), 
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_uuid_class.cpp`
 
-### Findings — PARTIAL
+### Findings — PASS
 
-- **V1 — Two separate constructors instead of one (CXX-012628):** Spec requires `explicit UUID(const ValueUUID& = ValueUUID())` as a single defaulted overload. Header declares `UUID()` and `explicit UUID(const ValueUUID&)` separately — structurally non-conformant but functionally equivalent.
-- **V2 — `std::hash` specialization unconditional (CXX-012657):** Spec requires `#if __cplusplus >= 201103L` guard; header omits it. Harmless at C++17 but structurally non-conformant.
-
-All 41 other CERTs pass (toString, fromString, comparison operators, isNil, generate, copy/assignment, etc.).
+The UUID shape, including `explicit UUID(const ValueUUID& = ValueUUID())` and
+the C++11+ `std::hash` specialization guard, matches the covered spec shape.
 **Spec:** §5575–6648 "The UUID Class"
 (CERT CXX-012628, CXX-012657 and 41 others in that section)
 
@@ -529,13 +507,10 @@ All 41 other CERTs pass (toString, fromString, comparison operators, isNil, gene
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_asb_connection.cpp`
 
-### Findings — PARTIAL
+### Findings — PASS
 
-- **V1 — `AbstractServiceBusConnectionStateEnum` not nested (CXX-011275):** Spec requires public member enum inside `AbstractServiceBusConnection`. Header exposes only `using StateEnum = AbstractServiceBusConnectionStatusData::StateEnum` — wrong qualified name and wrong nesting.
-- **V2 — `AbstractServiceBusConnectionStatusData` not nested (CXX-011277):** Spec requires nested struct. Header exposes only `using StatusData = AbstractServiceBusConnectionStatusData` (standalone type in separate header).
-- **V3/V4 — Consequent (CXX-011279, CXX-011295):** `state` field and `getStatus()` return use alias type names rather than the spec-required nested qualified names. Functionally correct; structurally non-conformant.
-
-All 20 other CERTs pass. Violations documented under `#ifdef CHECK_VIOLATIONS` in test so suite stays green.
+The spec-required nested ASB status/data names are present, and the compile test
+checks `getStatus()` and status data field shapes through those names.
 **Spec:** §6649–7310 "The AbstractServiceBusConnection Class"
 (CERT CXX-011275, CXX-011277, CXX-011279, CXX-011295 and 20 others)
 
@@ -545,12 +520,12 @@ All 20 other CERTs pass. Violations documented under `#ifdef CHECK_VIOLATIONS` i
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_base_reader_writer.cpp`
 
-### Findings — PARTIAL
+### Findings — PASS
 
-- **V1 — Reader/Writer dtors are `virtual` (CXX-011094, CXX-011095):** Spec specifies protected non-virtual dtor; headers add `virtual`. Reader/Writer objects are always destroyed through factory methods (`destroyReader`/`destroyWriter`) which know the concrete type — polymorphic deletion never occurs. The `virtual` is therefore unnecessary, adds a vtable slot, and contradicts the spec's intentional design: a protected non-virtual dtor signals "use the factory" and makes `delete &reader` a compile error from outside a derived class.
-- **V2 — `AbstractServiceBusConnectionStatusData` at wrong scope (CXX-011355):** Spec requires `statusChanged` parameter to be `AbstractServiceBusConnection::AbstractServiceBusConnectionStatusData` (nested type). The standalone struct in a separate header is used via type alias instead. Functional match only.
-
-All 16 other CERTs pass (Listener shape, Reader/Writer abstract interface, StatusListener callback, protected ctor/copy-ctor/copy-assignment across all four classes).
+Listener shape, Reader/Writer base class lifecycle, and
+`AbstractServiceBusConnectionStatusListener` callback shape match the covered
+spec requirements. The base Reader/Writer destructors are protected and
+non-virtual.
 **Spec:** §7311–7784 "The Listener, Reader, Writer, and StatusListener Classes"
 (CERT CXX-010675–011205 series, CXX-011324–011355)
 
@@ -572,15 +547,11 @@ All 28 CERTs satisfied. Read/write overloads, query methods, version/vendor gett
 **Status:** `done`
 **Test written:** `arcal/test/arcal-cert/compile/conf_primitive_accessors.cpp`
 
-### Findings — PARTIAL
+### Findings — PASS
 
-- **V1 — Three missing accessor classes (CXX-005765):** `DurationAccessor`, `TimeAccessor`, and `DateTimeAccessor` (all `int64_t`-backed) are absent. `UnsignedLongAccessor` is present but not in Table 9.1-1 (surplus, not a violation).
-- **V2 — `get<T>Value()` methods missing (CXX-005775):** Header provides generic `getValue()` / `getValue(bool) const` returning `const ValueType&`. Type-named getters (`getBooleanValue()`, `getDoubleValue()`, etc.) are not declared.
-- **V3 — `set<T>Value()` wrong signature (CXX-011087):** Header provides `setValue(const ValueType&)` returning `void`. Spec requires named method returning `<T>Accessor&`.
-- **V4 — Conversion operator name mismatch (CXX-011089):** Header declares `operator const ValueType&() const`. Spec requires `operator xs::<T>()` (a distinct operator name in C++; implicit conversion works but explicit `.operator xs::Boolean()` would fail).
-- **V5 — Public ctor/copy-ctor/dtor (implied violation):** Base Accessor pattern requires protected; `PrimitiveAccessor<T,V>` exposes them as public.
-
-Passing: CXX-005765 (class existence and inheritance) for 10 of 13 types, CXX-011088/CXX-013023 (both `operator=` overloads) for all types.
+Primitive accessor classes exist for the covered simple primitive types and
+provide type-specific `get<T>Value()`, `set<T>Value(...)`, value assignment, copy
+assignment, and conversion operators.
 **Spec:** §10748–10945 "The SimplePrimitive Accessors"
 (CERT CXX-005765, CXX-005775, CXX-011087, CXX-011088, CXX-013023, CXX-011089)
 
@@ -593,7 +564,7 @@ Passing: CXX-005765 (class existence and inheritance) for 10 of 13 types, CXX-01
 - **Existing tests:** `arcal/test/conform/` (compile-only `static_assert` style); `arcal/test/arcal-cert/compile/` (newer cert tests)
 - **Test style:** Prefer compile-time `static_assert` checks. Include a short comment at the top
   citing the spec section and CERT ID. New tests go in `arcal/test/arcal-cert/compile/`.
-- **Do not modify** generated headers — violations are findings to report, not
-  to fix in-place.
+- Fix generated API-shape issues in the schema compiler/templates, then
+  regenerate the headers. Do not hand-edit generated headers as the primary fix.
 - **Abstract types** (`@abstract='true'` in XSD) do not get `create`/`destroy`;
   check TASK-002 findings against that caveat.

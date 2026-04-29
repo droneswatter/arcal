@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Accessor.h"
+#include "xs/accessorType.h"
 
 #include <cstdint>
 #include <string>
@@ -38,24 +39,43 @@ public:
 
     PrimitiveAccessor& operator=(const ValueType& value) { value_ = value; return *this; }
     PrimitiveAccessor& operator=(ValueType&& value) { value_ = std::move(value); return *this; }
-    operator const ValueType&() const { return value_; }
 
 private:
     ValueType value_{};
 };
 
-using BooleanAccessor        = PrimitiveAccessor<bool, accessorType::booleanAccessor>;
-using ByteAccessor           = PrimitiveAccessor<int8_t, accessorType::byteAccessor>;
-using ShortAccessor          = PrimitiveAccessor<int16_t, accessorType::shortAccessor>;
-using IntAccessor            = PrimitiveAccessor<int32_t, accessorType::intAccessor>;
-using LongAccessor           = PrimitiveAccessor<int64_t, accessorType::longAccessor>;
-using FloatAccessor          = PrimitiveAccessor<float, accessorType::floatAccessor>;
-using DoubleAccessor         = PrimitiveAccessor<double, accessorType::doubleAccessor>;
-using UnsignedByteAccessor   = PrimitiveAccessor<uint8_t, accessorType::byteAccessor>;
-using UnsignedShortAccessor  = PrimitiveAccessor<uint16_t, accessorType::shortAccessor>;
-using UnsignedIntAccessor    = PrimitiveAccessor<uint32_t, accessorType::intAccessor>;
-using UnsignedLongAccessor   = PrimitiveAccessor<uint64_t, accessorType::longAccessor>;
-using BinaryAccessor         = PrimitiveAccessor<std::vector<uint8_t>, accessorType::binaryAccessor>;
+#define ARCAL_DEFINE_PRIMITIVE_ACCESSOR(ClassName, ValueAlias, AccessorTag, MethodName) \
+class ClassName : public PrimitiveAccessor<ValueAlias, AccessorTag> { \
+public: \
+    using Base = PrimitiveAccessor<ValueAlias, AccessorTag>; \
+    using Base::Base; \
+    ClassName() = default; \
+    ClassName(const ClassName&) = default; \
+    ClassName& operator=(const ClassName&) = default; \
+    ~ClassName() override = default; \
+    ValueAlias get##MethodName##Value() const { return Base::getValue(); } \
+    ClassName& set##MethodName##Value(ValueAlias value) { Base::setValue(std::move(value)); return *this; } \
+    ClassName& operator=(ValueAlias value) { Base::setValue(std::move(value)); return *this; } \
+    operator ValueAlias() const { return Base::getValue(); } \
+}
+
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(BooleanAccessor, xs::Boolean, accessorType::booleanAccessor, Boolean);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(ByteAccessor, xs::Byte, accessorType::byteAccessor, Byte);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(ShortAccessor, xs::Short, accessorType::shortAccessor, Short);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(IntAccessor, xs::Int, accessorType::intAccessor, Int);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(LongAccessor, xs::Long, accessorType::longAccessor, Long);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(FloatAccessor, xs::Float, accessorType::floatAccessor, Float);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(DoubleAccessor, xs::Double, accessorType::doubleAccessor, Double);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(UnsignedByteAccessor, xs::UnsignedByte, accessorType::byteAccessor, UnsignedByte);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(UnsignedShortAccessor, xs::UnsignedShort, accessorType::shortAccessor, UnsignedShort);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(UnsignedIntAccessor, xs::UnsignedInt, accessorType::intAccessor, UnsignedInt);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(UnsignedLongAccessor, xs::UnsignedLong, accessorType::longAccessor, UnsignedLong);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(BinaryAccessor, xs::Binary, accessorType::binaryAccessor, Binary);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(DurationAccessor, xs::Duration, accessorType::durationAccessor, Duration);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(TimeAccessor, xs::Time, accessorType::dateTimeAccessor, Time);
+ARCAL_DEFINE_PRIMITIVE_ACCESSOR(DateTimeAccessor, xs::DateTime, accessorType::dateTimeAccessor, DateTime);
+
+#undef ARCAL_DEFINE_PRIMITIVE_ACCESSOR
 
 } // namespace base
 } // namespace uci

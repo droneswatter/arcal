@@ -29,8 +29,13 @@ public:
     };
 
     struct ValueUUID {
-        uint64_t mostSignificantBits{0};
-        uint64_t leastSignificantBits{0};
+        constexpr ValueUUID(uint64_t mostSignificantBitsIn = 0,
+                            uint64_t leastSignificantBitsIn = 0) noexcept
+            : mostSignificantBits(mostSignificantBitsIn),
+              leastSignificantBits(leastSignificantBitsIn) {}
+
+        uint64_t mostSignificantBits;
+        uint64_t leastSignificantBits;
     };
 
     static UUID fromString(const std::string& str);
@@ -54,8 +59,7 @@ public:
     static const char* toString(Variant v) noexcept;
     static const char* toString(Version v) noexcept;
 
-    UUID();
-    explicit UUID(const ValueUUID& value);
+    explicit UUID(const ValueUUID& value = ValueUUID());
     UUID(const char* stringifiedUUID);
     UUID(uint64_t mostSignificantBits, uint64_t leastSignificantBits);
     UUID(const UUID&) = default;
@@ -76,7 +80,9 @@ private:
 } // namespace base
 } // namespace uci
 
+#if __cplusplus >= 201103L
 template <>
 struct std::hash<uci::base::UUID> {
     std::size_t operator()(const uci::base::UUID& uuid) const noexcept;
 };
+#endif

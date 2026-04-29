@@ -11,11 +11,11 @@ public:
     AccessorType getAccessorType() const noexcept override { return ACCESSOR_TYPE_STRING; }
     void reset() override { value_.clear(); }
 
-    const std::string& str() const { return value_; }
+    std::string str() const { return value_; }
     const char* c_str() const { return value_.c_str(); }
 
-    void setStringValue(const std::string& v) { value_ = v; }
-    void setStringValue(const char* v) { value_ = v ? v : ""; }
+    StringAccessor& setStringValue(const std::string& v) { value_ = v; return *this; }
+    StringAccessor& setStringValue(const char* v) { value_ = v ? v : ""; return *this; }
 
     StringAccessor& operator=(const std::string& v) { value_ = v; return *this; }
     StringAccessor& operator=(const char* v) { setStringValue(v); return *this; }

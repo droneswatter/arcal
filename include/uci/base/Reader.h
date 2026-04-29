@@ -8,7 +8,7 @@ protected:
     Reader() = default;
     Reader(const Reader&) = default;
     Reader& operator=(const Reader&) = default;
-    virtual ~Reader() = default;
+    ~Reader() = default;
 };
 
 } // namespace base

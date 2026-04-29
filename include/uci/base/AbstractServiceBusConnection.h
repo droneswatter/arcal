@@ -11,9 +11,11 @@ namespace base {
 
 class AbstractServiceBusConnection {
 public:
+    using AbstractServiceBusConnectionStatusData = uci::base::AbstractServiceBusConnectionStatusData;
+    using AbstractServiceBusConnectionStateEnum = AbstractServiceBusConnectionStatusData::StateEnum;
     using StatusData     = AbstractServiceBusConnectionStatusData;
     using StatusListener = AbstractServiceBusConnectionStatusListener;
-    using StateEnum      = AbstractServiceBusConnectionStatusData::StateEnum;
+    using StateEnum      = AbstractServiceBusConnectionStateEnum;
 
     virtual void shutdown() = 0;
 

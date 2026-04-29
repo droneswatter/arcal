@@ -7,6 +7,8 @@
 #include <iterator>
 #include <limits>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 namespace uci {
 namespace base {
@@ -81,9 +83,27 @@ public:
     virtual void clear() noexcept = 0;
 
     virtual void push_back(const T& v) = 0;
-    template <typename U>
+    template <typename U,
+              typename std::enable_if<
+                  !std::is_lvalue_reference<U&&>::value &&
+                  !std::is_base_of<T, typename std::decay<U>::type>::value &&
+                  std::is_assignable<reference, U&&>::value,
+                  int>::type = 0>
     void push_back(U&& v) {
-        push_back(static_cast<const T&>(v));
+        T item{};
+        item = std::move(v);
+        push_back(item);
+    }
+    template <typename U,
+              typename std::enable_if<
+                  !std::is_same<typename std::decay<U>::type, T>::value &&
+                  !std::is_base_of<T, typename std::decay<U>::type>::value &&
+                  std::is_assignable<reference, const U&>::value,
+                  int>::type = 0>
+    void push_back(const U& v) {
+        T item{};
+        item = v;
+        push_back(item);
     }
 
     virtual reference operator[](size_type i) = 0;

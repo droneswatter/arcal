@@ -28,10 +28,6 @@ void simpleNameHash(const uint8_t* ns, const uint8_t* name, std::size_t nameLen,
 namespace uci {
 namespace base {
 
-UUID::UUID() {
-    octets_.fill(0);
-}
-
 UUID::UUID(const ValueUUID& value) {
     for (int i = 0; i < 8; ++i)
         octets_[i]     = static_cast<uint8_t>((value.mostSignificantBits  >> (56 - 8 * i)) & 0xFF);
