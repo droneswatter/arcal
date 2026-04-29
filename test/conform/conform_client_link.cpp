@@ -5,6 +5,7 @@
 // ARCAL headers and libraries without requiring a usable DDS runtime.
 
 #include "uci/base/AbstractServiceBusConnection.h"
+#include "uci/base/AbstractServiceBusConnectionStatusListener.h"
 #include "uci/base/ExternalizerLoader.h"
 #include "uci/type/ServiceStatusMT.h"
 
@@ -15,11 +16,11 @@ namespace {
 
 class StatusListener final : public uci::base::AbstractServiceBusConnectionStatusListener {
 public:
-    void statusChanged(uci::base::AbstractServiceBusConnectionStatusData status) override {
+    void statusChanged(uci::base::AbstractServiceBusConnection::AbstractServiceBusConnectionStatusData status) override {
         lastStatus = status;
     }
 
-    uci::base::AbstractServiceBusConnectionStatusData lastStatus;
+    uci::base::AbstractServiceBusConnection::AbstractServiceBusConnectionStatusData lastStatus;
 };
 
 class ServiceStatusListener final : public uci::type::ServiceStatusMT::Listener {

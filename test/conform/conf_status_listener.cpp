@@ -3,7 +3,8 @@
 #include <string>
 #include <type_traits>
 
-using StatusData = uci::base::AbstractServiceBusConnectionStatusData;
+using ASB = uci::base::AbstractServiceBusConnection;
+using StatusData = ASB::AbstractServiceBusConnectionStatusData;
 using Listener   = uci::base::AbstractServiceBusConnectionStatusListener;
 
 // stateDetail field must exist with type std::string (not 'detail')

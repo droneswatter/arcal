@@ -37,13 +37,13 @@ int main() {
 
     auto& serviceIn = uci::type::ServiceStatusMT::create(nullptr);
     serviceIn.getMessageHeader().getSchemaVersion() = "arcal-json-read";
-    serviceIn.getMessageData().getTimeUp() = "PT42S";
+    serviceIn.getMessageData().getTimeUp().setValue(42);
     serviceIn.getMessageData().setServiceState(uci::type::ServiceStateEnum::NORMAL);
     auto& serviceOut = uci::type::ServiceStatusMT::create(nullptr);
     roundtrip(ext, serviceIn, serviceOut);
     require(serviceOut.getMessageHeader().getSchemaVersion() == "arcal-json-read",
             "required nested string round-trips");
-    require(serviceOut.getMessageData().getTimeUp() == "PT42S",
+    require(serviceOut.getMessageData().getTimeUp().getValue() == 42,
             "required simple restriction round-trips");
 
     auto& subsystemIn = uci::type::SubsystemStatusMDT::create(nullptr);

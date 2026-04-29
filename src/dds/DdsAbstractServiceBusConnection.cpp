@@ -1,4 +1,5 @@
 #include "DdsAbstractServiceBusConnection.h"
+#include "uci/base/AbstractServiceBusConnectionStatusListener.h"
 #include "uci/base/UCIException.h"
 
 #include <chrono>

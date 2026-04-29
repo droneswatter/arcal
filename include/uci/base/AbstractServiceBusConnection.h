@@ -1,6 +1,5 @@
 #pragma once
 
-#include "AbstractServiceBusConnectionStatusListener.h"
 #include "UUID.h"
 #include <string>
 
@@ -9,10 +8,23 @@ namespace uci { namespace base { class Externalizer; } }
 namespace uci {
 namespace base {
 
+class AbstractServiceBusConnectionStatusListener;
+
 class AbstractServiceBusConnection {
 public:
-    using AbstractServiceBusConnectionStatusData = uci::base::AbstractServiceBusConnectionStatusData;
-    using AbstractServiceBusConnectionStateEnum = AbstractServiceBusConnectionStatusData::StateEnum;
+    enum AbstractServiceBusConnectionStateEnum {
+        INITIALIZING,
+        NORMAL,
+        DEGRADED,
+        INOPERABLE,
+        FAILED
+    };
+
+    struct AbstractServiceBusConnectionStatusData {
+        AbstractServiceBusConnectionStateEnum state{INITIALIZING};
+        std::string stateDetail;
+    };
+
     using StatusData     = AbstractServiceBusConnectionStatusData;
     using StatusListener = AbstractServiceBusConnectionStatusListener;
     using StateEnum      = AbstractServiceBusConnectionStateEnum;

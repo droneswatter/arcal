@@ -150,8 +150,8 @@ void publishActivity(uci::base::AbstractServiceBusConnection* asb,
 struct ReceivedCommand {
     bool received{false};
     bool start{false};
-    uci::base::UUID commandUuid;
-    uci::base::UUID activityUuid;
+    uci::base::UUID commandUuid{};
+    uci::base::UUID activityUuid{};
 };
 
 class CommandListener final : public uci::type::AMTI_CommandMT::Listener {
@@ -166,7 +166,7 @@ public:
             last.received = true;
             last.start = true;
             last.commandUuid = capability.getCommandID().getUUID();
-            last.activityUuid = {};
+            last.activityUuid = uci::base::UUID{};
             std::cout << "service: received start AMTI_Command commandUUID=" << last.commandUuid.toString()
                       << " capabilityUUID=" << capability.getCapabilityID().getUUID().toString() << "\n";
         } else if (command.isActivity()) {
@@ -182,7 +182,7 @@ public:
 
     ReceivedCommand take() {
         auto result = last;
-        last = {};
+        last = ReceivedCommand{};
         return result;
     }
 

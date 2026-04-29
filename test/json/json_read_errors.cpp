@@ -33,7 +33,7 @@ int main() {
     auto& state = uci::type::SystemStateEnum::create(nullptr);
 
     header.getSystemID().setUUID(uci::base::UUID::createVersion3UUID("json-read-errors-system"));
-    header.getTimestamp() = "2026-04-27T00:00:00Z";
+    header.getTimestamp().setValue(1777248000);
     header.getSchemaVersion() = "2.5.0";
     header.setMode(uci::type::MessageModeEnum::LIVE);
 

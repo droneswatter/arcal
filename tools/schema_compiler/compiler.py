@@ -122,11 +122,12 @@ SCALAR_PRIMITIVE_TYPES = {
     "boolean", "byte", "short", "int", "long",
     "float", "double", "unsignedByte", "unsignedShort",
     "unsignedInt", "unsignedLong", "integer", "decimal",
+    "dateTime", "time", "duration",
 }
 
 TEXT_PRIMITIVE_TYPES = {
-    "string", "anyURI", "dateTime", "dateTimeStamp",
-    "date", "time", "duration", "ID", "IDREF", "NMTOKEN",
+    "string", "anyURI", "dateTimeStamp",
+    "date", "ID", "IDREF", "NMTOKEN",
 }
 
 
@@ -215,6 +216,9 @@ XSD_SCALAR_TO_ACCESSOR_ALIAS: dict[str, str] = {
     "decimal":      "uci::base::DoubleAccessor",
     "base64Binary": "uci::base::BinaryAccessor",
     "hexBinary":    "uci::base::BinaryAccessor",
+    "dateTime":     "uci::base::DateTimeAccessor",
+    "time":         "uci::base::TimeAccessor",
+    "duration":     "uci::base::DurationAccessor",
 }
 
 
@@ -1300,8 +1304,11 @@ CXX_PRIMITIVE_MAP = {
     "integer": "int64_t", "decimal": "double",
     "float": "float", "double": "double",
     "string": "std::string", "anyURI": "std::string",
-    "dateTime": "std::string", "dateTimeStamp": "std::string",
-    "date": "std::string", "time": "std::string", "duration": "std::string",
+    # Table 9.1-1: duration, time, dateTime are int64_t (CERT CXX-004937).
+    # dateTimeStamp and date are NOT in Table 9.1-1 and remain std::string.
+    "dateTime": "int64_t", "time": "int64_t", "duration": "int64_t",
+    "dateTimeStamp": "std::string",
+    "date": "std::string",
     "base64Binary": "std::vector<uint8_t>", "hexBinary": "std::vector<uint8_t>",
     "ID": "std::string", "IDREF": "std::string", "NMTOKEN": "std::string",
     UUID_TYPE_NAME: UUID_CXX_TYPE,
@@ -1403,6 +1410,11 @@ CDR_ENCODE_MAP = {
     "std::string": "arcal::externalizer::cdr::encode_string",
     "std::vector<uint8_t>": "arcal::externalizer::cdr::encode_bytes",
     UUID_CXX_TYPE: "arcal::externalizer::cdr::encode_uuid",
+    # Table 9.1-1: Duration, Time, DateTime are int64_t — map xs:: aliases
+    # so the template emits encode_int64, not the string fallback.
+    "xs::Duration": "arcal::externalizer::cdr::encode_int64",
+    "xs::Time":     "arcal::externalizer::cdr::encode_int64",
+    "xs::DateTime": "arcal::externalizer::cdr::encode_int64",
 }
 CDR_DECODE_MAP = {k: v.replace("encode_", "decode_") for k, v in CDR_ENCODE_MAP.items()}
 

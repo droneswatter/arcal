@@ -136,8 +136,8 @@ void publishActivity(uci::base::AbstractServiceBusConnection* asb,
 struct ReceivedCommand {
     bool received{false};
     bool start{false};
-    uci::base::UUID commandUuid;
-    uci::base::UUID activityUuid;
+    uci::base::UUID commandUuid{};
+    uci::base::UUID activityUuid{};
 };
 
 bool waitForCommand(uci::utils::ReaderPtr<uci::type::SMTI_CommandMT>& reader,
@@ -235,7 +235,7 @@ int runService() {
             if (commands.empty()) return;
 
             const auto& commandChoice = commands[0];
-            command = {};
+            command = ReceivedCommand{};
             command.received = true;
             if (commandChoice.isCapability()) {
                 const auto& capability = commandChoice.getCapability();
@@ -266,7 +266,7 @@ int runService() {
                     uci::type::ActivityStateEnum::ACTIVE_UNCONSTRAINED,
                     uci::type::ObjectStateEnum::NEW);
 
-    command = {};
+    command = ReceivedCommand{};
     if (!waitForCommand(commandReader, commandListener, command, 30000) ||
         command.start || command.activityUuid != activityUuid) {
         throw std::runtime_error("service timed out waiting for stop command");

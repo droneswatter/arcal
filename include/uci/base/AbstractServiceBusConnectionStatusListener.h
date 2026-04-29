@@ -1,26 +1,14 @@
 #pragma once
 
-#include <string>
+#include "AbstractServiceBusConnection.h"
 
 namespace uci {
 namespace base {
 
-struct AbstractServiceBusConnectionStatusData {
-    enum StateEnum {
-        INITIALIZING,
-        NORMAL,
-        DEGRADED,
-        INOPERABLE,
-        FAILED
-    };
-
-    StateEnum   state{INITIALIZING};
-    std::string stateDetail;
-};
-
 class AbstractServiceBusConnectionStatusListener {
 public:
-    virtual void statusChanged(AbstractServiceBusConnectionStatusData newStatus) = 0;
+    virtual void statusChanged(
+        AbstractServiceBusConnection::AbstractServiceBusConnectionStatusData newStatus) = 0;
 
     virtual ~AbstractServiceBusConnectionStatusListener() = default;
 

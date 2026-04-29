@@ -1,5 +1,6 @@
 // Compile-only conformance: destructor visibility for API-owned lifetimes.
 #include "uci/base/AbstractServiceBusConnection.h"
+#include "uci/base/AbstractServiceBusConnectionStatusListener.h"
 #include "uci/base/Accessor.h"
 #include "uci/base/Externalizer.h"
 #include "uci/base/ExternalizerLoader.h"
