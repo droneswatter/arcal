@@ -143,6 +143,11 @@ function(arcal_add_subset subset_config_path)
         ${subset_generated_dir}/*_cdr.cpp
         ${subset_generated_dir}/cdr_register_all.cpp
     )
+    file(GLOB subset_core_generated_sources
+        ${subset_generated_dir}/type_lifecycle_*.cpp
+        ${subset_generated_dir}/factories_*.cpp
+        ${subset_generated_dir}/accessor_factory_all.cpp
+    )
     file(GLOB_RECURSE subset_json_generated_sources
         ${subset_json_dir}/*_json.cpp
         ${subset_json_dir}/json_register_all.cpp
@@ -150,6 +155,9 @@ function(arcal_add_subset subset_config_path)
 
     if(NOT subset_cdr_generated_sources)
         message(FATAL_ERROR "Subset ${subset_name} produced no CDR generated sources")
+    endif()
+    if(NOT subset_core_generated_sources)
+        message(FATAL_ERROR "Subset ${subset_name} produced no core generated sources")
     endif()
     if(NOT subset_json_generated_sources)
         message(FATAL_ERROR "Subset ${subset_name} produced no JSON generated sources")
@@ -175,9 +183,7 @@ function(arcal_add_subset subset_config_path)
 
     set_source_files_properties(
         ${subset_generated_dir}/cdr_register_all.cpp
-        ${subset_generated_dir}/factories_all.cpp
         ${subset_generated_dir}/accessor_factory_all.cpp
-        ${subset_generated_dir}/type_lifecycle_all.cpp
         ${subset_json_dir}/json_register_all.cpp
         PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
     )
@@ -222,9 +228,7 @@ function(arcal_add_subset subset_config_path)
         src/dds/DdsWriterCore.cpp
         src/dds/arcal_payload.c
         src/dds/arcal_payload.cpp
-        ${subset_generated_dir}/type_lifecycle_all.cpp
-        ${subset_generated_dir}/factories_all.cpp
-        ${subset_generated_dir}/accessor_factory_all.cpp
+        ${subset_core_generated_sources}
         src/ExternalizerLoader.cpp
         $<TARGET_OBJECTS:${subset_target_base}_cdr_objects>
     )
@@ -383,11 +387,15 @@ file(GLOB_RECURSE CDR_GENERATED_SOURCES
     ${CMAKE_SOURCE_DIR}/src/generated/cdr_register_all.cpp
 )
 
+file(GLOB ARCAL_CORE_GENERATED_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/generated/type_lifecycle_*.cpp
+    ${CMAKE_SOURCE_DIR}/src/generated/factories_*.cpp
+    ${CMAKE_SOURCE_DIR}/src/generated/accessor_factory_all.cpp
+)
+
 set_source_files_properties(
     ${CMAKE_SOURCE_DIR}/src/generated/cdr_register_all.cpp
-    ${CMAKE_SOURCE_DIR}/src/generated/factories_all.cpp
     ${CMAKE_SOURCE_DIR}/src/generated/accessor_factory_all.cpp
-    ${CMAKE_SOURCE_DIR}/src/generated/type_lifecycle_all.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
 )
 
@@ -432,9 +440,7 @@ add_library(arcal SHARED
     src/dds/DdsWriterCore.cpp
     src/dds/arcal_payload.c
     src/dds/arcal_payload.cpp
-    src/generated/type_lifecycle_all.cpp
-    src/generated/factories_all.cpp
-    src/generated/accessor_factory_all.cpp
+    ${ARCAL_CORE_GENERATED_SOURCES}
     src/ExternalizerLoader.cpp
     $<TARGET_OBJECTS:arcal_cdr_objects>
 )
