@@ -19,6 +19,8 @@ fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$script_dir/.."
 
+source "$script_dir/build-support.sh"
+
 case "$variant" in
     full)
         build_dir="${ARCAL_BUILD_DIR:-$root/build}"
@@ -32,5 +34,8 @@ case "$variant" in
         ;;
 esac
 
-cmake --build "$build_dir" --target arcal_test_suite_all -j "${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
+arcal_suspend_cpptools
+trap 'arcal_resume_cpptools' EXIT
+
+cmake --build "$build_dir" --target arcal_test_suite_all -j "${CMAKE_BUILD_PARALLEL_LEVEL:-8}"
 ctest --test-dir "$build_dir" --output-on-failure "$@"

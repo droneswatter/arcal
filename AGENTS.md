@@ -29,7 +29,7 @@ cmake -S . -B build \
   -DCMAKE_PREFIX_PATH="$HOME/.local" \
   -DCMAKE_BUILD_TYPE=Debug \
   -G Ninja
-cmake --build build -j4   # use -j4 on ≤12 GB RAM; -j8 on ≥16 GB
+cmake --build build -j8   # reduce job count first if memory is tight
 ```
 
 Use the convenience script for a full clean rebuild:
@@ -48,18 +48,22 @@ bash scripts/measure-build-memory.sh
 |---|---|---|
 | `ARCAL_BUILD_TESTS` | `ON` | CERT test suite |
 | `ARCAL_BUILD_E2E_TESTS` | `ON` | E2E smoke tests |
-| `ARCAL_UNITY_BATCH_SIZE` | `25` | Files per unity batch — raise to speed up builds at the cost of more peak RAM |
+| `ARCAL_USE_MOLD_LINKER` | `ON` | Use mold for linking when available |
+| `ARCAL_UNITY_BATCH_SIZE` | `8` | Files per unity batch — raise to speed up builds at the cost of more peak RAM |
 
 ### Memory constraints (WSL2)
 
-Peak build memory at `-j8` is ~12 GB. Set in `~/.wslconfig`:
+Peak build memory at `-j8` is close to 12 GB. Set in `~/.wslconfig`:
 ```ini
 [wsl2]
 memory=14GB
 swap=4GB
 ```
 
-On a 12 GB machine, use `-j4`. If still OOM, reduce: `-DARCAL_UNITY_BATCH_SIZE=10`.
+If this still OOMs, reduce the job count first, then reduce `-DARCAL_UNITY_BATCH_SIZE=4`.
+
+The build scripts suspend VS Code C/C++ `cpptools` while compiling by default.
+Set `ARCAL_SUSPEND_CPPTOOLS=OFF` to keep cpptools running during builds.
 
 ## Running tests
 

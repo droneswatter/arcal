@@ -14,7 +14,7 @@ include(CMakePackageConfigHelpers)
 # Dependencies
 # ---------------------------------------------------------------------------
 
-set(ARCAL_UNITY_BATCH_SIZE "25" CACHE STRING "Number of source files per unity build batch")
+set(ARCAL_UNITY_BATCH_SIZE "15" CACHE STRING "Number of source files per unity build batch")
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -26,7 +26,15 @@ option(ARCAL_BUILD_TESTS         "Build CERT test suite"  ON)
 option(ARCAL_BUILD_E2E_TESTS     "Build E2E smoke tests"  ON)
 option(ARCAL_BUILD_INSTALL_TESTS "Build install smoke tests" ON)
 option(ARCAL_BUILD_EXAMPLES      "Build optional example applications" OFF)
+option(ARCAL_USE_MOLD_LINKER     "Use mold for linking when available" ON)
 set(ARCAL_SUBSET_CONFIGS "" CACHE STRING "Semicolon-separated subset CAL config JSON files to build as additional libraries")
+
+if(ARCAL_USE_MOLD_LINKER AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    find_program(ARCAL_MOLD_LINKER mold)
+    if(ARCAL_MOLD_LINKER)
+        add_link_options(-fuse-ld=mold)
+    endif()
+endif()
 
 if(ARCAL_BUILD_TESTS OR ARCAL_BUILD_E2E_TESTS OR ARCAL_BUILD_INSTALL_TESTS)
     enable_testing()
@@ -144,8 +152,7 @@ function(arcal_add_subset subset_config_path)
         ${subset_generated_dir}/cdr_register_all.cpp
     )
     file(GLOB subset_core_generated_sources
-        ${subset_generated_dir}/type_lifecycle_*.cpp
-        ${subset_generated_dir}/factories_*.cpp
+        ${subset_generated_dir}/type_impl/*Impl.cpp
         ${subset_generated_dir}/accessor_factory_all.cpp
     )
     file(GLOB_RECURSE subset_json_generated_sources
@@ -388,85 +395,119 @@ file(GLOB_RECURSE CDR_GENERATED_SOURCES
 )
 
 file(GLOB ARCAL_CORE_GENERATED_SOURCES
-    ${CMAKE_SOURCE_DIR}/src/generated/type_lifecycle_*.cpp
-    ${CMAKE_SOURCE_DIR}/src/generated/factories_*.cpp
+    ${CMAKE_SOURCE_DIR}/src/generated/type_impl/*Impl.cpp
     ${CMAKE_SOURCE_DIR}/src/generated/accessor_factory_all.cpp
 )
 
-set_source_files_properties(
-    ${CMAKE_SOURCE_DIR}/src/generated/cdr_register_all.cpp
-    ${CMAKE_SOURCE_DIR}/src/generated/accessor_factory_all.cpp
-    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
-)
+set(ARCAL_HAVE_FULL_GENERATED OFF)
+if(CDR_GENERATED_SOURCES AND ARCAL_CORE_GENERATED_SOURCES)
+    set(ARCAL_HAVE_FULL_GENERATED ON)
+endif()
 
-add_library(arcal_cdr_objects OBJECT
-    externalizer/cdr/CdrExternalizer.cpp
-    externalizer/cdr/ExternalizerLoader.cpp
-    ${CDR_GENERATED_SOURCES}
-)
+if(ARCAL_HAVE_FULL_GENERATED)
+    set_source_files_properties(
+        ${CMAKE_SOURCE_DIR}/src/generated/cdr_register_all.cpp
+        ${CMAKE_SOURCE_DIR}/src/generated/accessor_factory_all.cpp
+        PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
+    )
 
-add_dependencies(arcal_cdr_objects arcal_generated)
+    add_library(arcal_cdr_objects OBJECT
+        externalizer/cdr/CdrExternalizer.cpp
+        externalizer/cdr/ExternalizerLoader.cpp
+        ${CDR_GENERATED_SOURCES}
+    )
 
-target_include_directories(arcal_cdr_objects PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/externalizer/cdr
-)
+    add_dependencies(arcal_cdr_objects arcal_generated)
 
-set_target_properties(arcal_cdr_objects PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    UNITY_BUILD ON
-    UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
-)
+    target_include_directories(arcal_cdr_objects PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/externalizer/cdr
+    )
 
-target_precompile_headers(arcal_cdr_objects PRIVATE
-    "${CMAKE_SOURCE_DIR}/externalizer/cdr/CdrPrimitives.h"
-    "${CMAKE_SOURCE_DIR}/externalizer/cdr/CdrRegistry.h"
-    "${CMAKE_SOURCE_DIR}/include/uci/base/BoundedList.h"
-    "${CMAKE_SOURCE_DIR}/include/uci/base/SimpleList.h"
-)
+    set_target_properties(arcal_cdr_objects PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
+    )
 
-# Generated CDR files are never debugged directly; line tables are enough for
-# stack traces and cost a fraction of full DWARF (-g). -pipe avoids temp files
-# between compiler stages.
-target_compile_options(arcal_cdr_objects PRIVATE -g1 -pipe)
+    target_precompile_headers(arcal_cdr_objects PRIVATE
+        "${CMAKE_SOURCE_DIR}/externalizer/cdr/CdrPrimitives.h"
+        "${CMAKE_SOURCE_DIR}/externalizer/cdr/CdrRegistry.h"
+        "${CMAKE_SOURCE_DIR}/include/uci/base/BoundedList.h"
+        "${CMAKE_SOURCE_DIR}/include/uci/base/SimpleList.h"
+    )
 
-add_library(arcal SHARED
-    src/config/CalConfig.cpp
-    src/UUID.cpp
-    src/dds/CdrBridge.cpp
-    src/dds/DdsAbstractServiceBusConnection.cpp
-    src/dds/DdsReaderCore.cpp
-    src/dds/DdsWriterCore.cpp
-    src/dds/arcal_payload.c
-    src/dds/arcal_payload.cpp
-    ${ARCAL_CORE_GENERATED_SOURCES}
-    src/ExternalizerLoader.cpp
-    $<TARGET_OBJECTS:arcal_cdr_objects>
-)
+    # Generated CDR files are never debugged directly; line tables are enough for
+    # stack traces and cost a fraction of full DWARF (-g). -pipe avoids temp files
+    # between compiler stages.
+    target_compile_options(arcal_cdr_objects PRIVATE -g1 -pipe)
 
-add_dependencies(arcal arcal_generated arcal_idl)
+    add_library(arcal_core_generated_objects OBJECT
+        ${ARCAL_CORE_GENERATED_SOURCES}
+    )
 
-target_include_directories(arcal PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-PRIVATE
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
-)
+    add_dependencies(arcal_core_generated_objects arcal_generated)
 
-set_target_properties(arcal PROPERTIES
-    UNITY_BUILD ON
-    UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
-    INSTALL_RPATH "$ORIGIN"
-)
+    target_include_directories(arcal_core_generated_objects PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
 
-target_link_libraries(arcal PUBLIC CycloneDDS-CXX::ddscxx PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS})
+    set_target_properties(arcal_core_generated_objects PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
+    )
 
-set(ARCAL_CAL_VARIANTS arcal)
-set(ARCAL_JSON_PLUGIN_arcal arcal_externalizer_json)
-set(ARCAL_GENERATED_TARGET_arcal arcal_generated)
-set(ARCAL_LACAL_OUTPUT_arcal arlacal-server)
-set(ARCAL_EXAMPLE_PREFIX_arcal arcal)
+    target_precompile_headers(arcal_core_generated_objects PRIVATE
+        "${CMAKE_SOURCE_DIR}/include/arcal/AccessorFactory.h"
+        "${CMAKE_SOURCE_DIR}/include/uci/base/BoundedListImpl.h"
+        "${CMAKE_SOURCE_DIR}/include/uci/base/SimpleListImpl.h"
+    )
+
+    target_link_libraries(arcal_core_generated_objects PRIVATE CycloneDDS-CXX::ddscxx)
+
+    add_library(arcal SHARED
+        src/config/CalConfig.cpp
+        src/UUID.cpp
+        src/dds/CdrBridge.cpp
+        src/dds/DdsAbstractServiceBusConnection.cpp
+        src/dds/DdsReaderCore.cpp
+        src/dds/DdsWriterCore.cpp
+        src/dds/arcal_payload.c
+        src/dds/arcal_payload.cpp
+        src/ExternalizerLoader.cpp
+        $<TARGET_OBJECTS:arcal_core_generated_objects>
+        $<TARGET_OBJECTS:arcal_cdr_objects>
+    )
+
+    add_dependencies(arcal arcal_generated arcal_idl)
+
+    target_include_directories(arcal PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+    )
+
+    set_target_properties(arcal PROPERTIES
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE ${ARCAL_UNITY_BATCH_SIZE}
+        INSTALL_RPATH "$ORIGIN"
+    )
+
+    target_link_libraries(arcal PUBLIC CycloneDDS-CXX::ddscxx PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS})
+
+    set(ARCAL_CAL_VARIANTS arcal)
+    set(ARCAL_JSON_PLUGIN_arcal arcal_externalizer_json)
+    set(ARCAL_GENERATED_TARGET_arcal arcal_generated)
+    set(ARCAL_LACAL_OUTPUT_arcal arlacal-server)
+    set(ARCAL_EXAMPLE_PREFIX_arcal arcal)
+else()
+    message(STATUS "Full generated source tree not present; skipping main arcal targets.")
+    set(ARCAL_CAL_VARIANTS "")
+endif()
 
 # Use mold linker if available — significantly faster than ld/lld for large targets.
 find_program(MOLD_LINKER mold)
@@ -478,7 +519,9 @@ endif()
 # Externalizer plugins
 # ---------------------------------------------------------------------------
 
-add_subdirectory(externalizer/json)
+if(ARCAL_HAVE_FULL_GENERATED)
+    add_subdirectory(externalizer/json)
+endif()
 
 foreach(subset_config IN LISTS ARCAL_SUBSET_CONFIGS)
     arcal_add_subset("${subset_config}")
@@ -550,70 +593,72 @@ endif()
 # Install
 # ---------------------------------------------------------------------------
 
-install(TARGETS arcal arcal_externalizer_json
-    EXPORT arcalTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(ARCAL_HAVE_FULL_GENERATED)
+    install(TARGETS arcal arcal_externalizer_json
+        EXPORT arcalTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
 
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(
-    DIRECTORY externalizer/json/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcal/externalizer/json
-    FILES_MATCHING
-        PATTERN "*.h"
-)
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(
+        DIRECTORY externalizer/json/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/arcal/externalizer/json
+        FILES_MATCHING
+            PATTERN "*.h"
+    )
 
-configure_package_config_file(
-    ${CMAKE_SOURCE_DIR}/cmake/arcalConfig.cmake.in
-    ${CMAKE_BINARY_DIR}/arcalConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/arcal
-)
-
-write_basic_package_version_file(
-    ${CMAKE_BINARY_DIR}/arcalConfigVersion.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-install(
-    EXPORT arcalTargets
-    FILE arcalTargets.cmake
-    NAMESPACE arcal::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/arcal
-)
-
-install(
-    FILES
+    configure_package_config_file(
+        ${CMAKE_SOURCE_DIR}/cmake/arcalConfig.cmake.in
         ${CMAKE_BINARY_DIR}/arcalConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/arcal
+    )
+
+    write_basic_package_version_file(
         ${CMAKE_BINARY_DIR}/arcalConfigVersion.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/arcal
-)
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+    )
 
-install(
-    FILES
-        ${CMAKE_SOURCE_DIR}/README.md
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal
-)
+    install(
+        EXPORT arcalTargets
+        FILE arcalTargets.cmake
+        NAMESPACE arcal::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/arcal
+    )
 
-install(
-    FILES ${CMAKE_SOURCE_DIR}/lacal/README.md
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal
-    RENAME README_ARLACAL.md
-)
+    install(
+        FILES
+            ${CMAKE_BINARY_DIR}/arcalConfig.cmake
+            ${CMAKE_BINARY_DIR}/arcalConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/arcal
+    )
 
-install(
-    FILES ${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal/examples
-)
+    install(
+        FILES
+            ${CMAKE_SOURCE_DIR}/README.md
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal
+    )
 
-install(
-    DIRECTORY examples/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal/examples
-    FILES_MATCHING
-        PATTERN "*.cpp"
-        PATTERN "*.md"
-        PATTERN "*.json"
-        PATTERN "CMakeLists.txt"
-)
+    install(
+        FILES ${CMAKE_SOURCE_DIR}/lacal/README.md
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal
+        RENAME README_ARLACAL.md
+    )
+
+    install(
+        FILES ${CMAKE_SOURCE_DIR}/test/e2e/cyclonedds_localhost.xml
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal/examples
+    )
+
+    install(
+        DIRECTORY examples/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/arcal/examples
+        FILES_MATCHING
+            PATTERN "*.cpp"
+            PATTERN "*.md"
+            PATTERN "*.json"
+            PATTERN "CMakeLists.txt"
+    )
+endif()

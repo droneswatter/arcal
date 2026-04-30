@@ -1,0 +1,40 @@
+{
+    "files.watcherExclude": {
+        "**/.cache/**": true,
+        "**/.ccache/**": true,
+        "**/Testing/**": true,
+        "**/build*/**": true,
+        "**/include/uci/type/**": true,
+        "**/schema/**": true,
+        "**/src/generated/**": true
+    },
+    "search.exclude": {
+        "**/.cache/**": true,
+        "**/.ccache/**": true,
+        "**/Testing/**": true,
+        "**/build*/**": true,
+        "**/include/uci/type/**": true,
+        "**/schema/**": true,
+        "**/src/generated/**": true
+    },
+    "C_Cpp.files.exclude": {
+        "**/.cache/**": true,
+        "**/.ccache/**": true,
+        "**/Testing/**": true,
+        "**/build*/**": true,
+        "**/include/uci/type/**": true,
+        "**/schema/**": true,
+        "**/src/generated/**": true
+    },
+    "C_Cpp.codeAnalysis.exclude": {
+        "**/.cache/**": true,
+        "**/.ccache/**": true,
+        "**/Testing/**": true,
+        "**/build*/**": true,
+        "**/include/uci/type/**": true,
+        "**/schema/**": true,
+        "**/src/generated/**": true
+    },
+    "C_Cpp.codeAnalysis.runAutomatically": false,
+    "C_Cpp.workspaceParsingPriority": "low"
+}

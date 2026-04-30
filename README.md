@@ -90,7 +90,9 @@ vcpkg will automatically install `cyclonedds[idlc]`, `cyclonedds-cxx[idllib]`,
 
 ### Build resources
 
-The generated CDR codec is the heaviest part of the build. Peak memory scales with compiler choice, unity batch size, and parallelism. If the build runs out of memory, reduce the job count first, then reduce `ARCAL_UNITY_BATCH_SIZE`.
+The generated CDR codec is the heaviest part of the build. Peak memory scales with compiler choice, unity batch size, and parallelism. The defaults target an 8-core host with about 12 GB of RAM: `-j8` and `ARCAL_UNITY_BATCH_SIZE=8`. If the build runs out of memory, reduce the job count first, then reduce `ARCAL_UNITY_BATCH_SIZE`.
+
+The build scripts temporarily suspend VS Code C/C++ `cpptools` processes while compiling so editor parsing does not compete with `clang++`. Set `ARCAL_SUSPEND_CPPTOOLS=OFF` to opt out.
 
 On WSL2, set a memory limit in `~/.wslconfig` that leaves enough room for parallel C++ compilation:
 ```ini
@@ -138,12 +140,13 @@ bash scripts/build.sh
 | `ARCAL_BUILD_INSTALL_TESTS` | `ON` | Register install-tree smoke tests |
 | `ARCAL_BUILD_EXAMPLES` | `OFF` | Build optional example applications |
 | `ARCAL_BUILD_LACAL` | `ON` | Build `arlacal-server`, the WebSocket/OWP language-agnostic CAL bridge |
-| `ARCAL_UNITY_BATCH_SIZE` | `25` | Source files per unity build batch; increase to reduce compile time at the cost of higher peak memory |
+| `ARCAL_USE_MOLD_LINKER` | `ON` | Use `mold` for linking when it is available; falls back to the compiler default linker |
+| `ARCAL_UNITY_BATCH_SIZE` | `8` | Source files per unity build batch; increase to reduce compile time at the cost of higher peak memory |
 | `ARCAL_SUBSET_CONFIGS` | empty | Semicolon-separated JSON subset configs that build additional installable CAL libraries such as `arcal-simple` |
 
 Example:
 ```bash
-cmake -S . -B build -DARCAL_UNITY_BATCH_SIZE=25 -G Ninja
+cmake -S . -B build -DARCAL_UNITY_BATCH_SIZE=8 -G Ninja
 ```
 
 ### Subset CALs
@@ -182,7 +185,7 @@ Build the bundled sample subset:
 cmake -S . -B build \
   -DARCAL_SUBSET_CONFIGS=$PWD/config/subsets/arcal-simple.json \
   -G Ninja
-cmake --build build --target arcal_simple arcal_simple_externalizer_json -j4
+cmake --build build --target arcal_simple arcal_simple_externalizer_json -j8
 ```
 
 After installation, the subset installs alongside the main library as:
@@ -225,7 +228,7 @@ cmake -S . -B build-subset-cert \
 Build the subset CAL and the full standalone + `arcal-cert` test suite against it:
 
 ```bash
-cmake --build build-subset-cert --target arcal_test_suite_all -j4
+cmake --build build-subset-cert --target arcal_test_suite_all -j8
 ctest --test-dir build-subset-cert --output-on-failure
 ```
 
@@ -463,7 +466,7 @@ Build it explicitly:
 
 ```bash
 cmake -S . -B build -DARCAL_BUILD_EXAMPLES=ON -G Ninja
-cmake --build build --target arcal_amti_service_demo arcal_smti_service_demo -j4
+cmake --build build --target arcal_amti_service_demo arcal_smti_service_demo -j8
 ```
 
 The samples are not registered with CTest. Their READMEs include traffic
@@ -622,7 +625,7 @@ ctest --test-dir build -R "^INSTALL-" --output-on-failure
 ### Measuring build performance
 
 ```bash
-bash scripts/measure-build.sh --clean-first -j8
+bash scripts/measure-build.sh -j8
 ```
 
 Reports wall time and peak memory usage.

@@ -19,12 +19,18 @@ fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$script_dir/.."
 
+source "$script_dir/build-support.sh"
+
 prefix="${ARCAL_PREFIX:-$HOME/.local}"
 build_type="${CMAKE_BUILD_TYPE:-Debug}"
 cxx_compiler="${CMAKE_CXX_COMPILER:-clang++-20}"
 c_compiler="${CMAKE_C_COMPILER:-clang-20}"
 generator="${CMAKE_GENERATOR:-Ninja}"
-build_parallel="${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
+build_parallel="${CMAKE_BUILD_PARALLEL_LEVEL:-8}"
+unity_batch_size="${ARCAL_UNITY_BATCH_SIZE:-8}"
+
+arcal_suspend_cpptools
+trap 'arcal_resume_cpptools' EXIT
 
 case "$variant" in
     full)
@@ -55,6 +61,7 @@ cmake -S "$root" -B "$build_dir" \
     -DCMAKE_PREFIX_PATH="$prefix" \
     -DCMAKE_BUILD_TYPE="$build_type" \
     -DARCAL_CERT_CAL_LIB="$cert_cal" \
+    -DARCAL_UNITY_BATCH_SIZE="$unity_batch_size" \
     "${subset_args[@]}" \
     "$@" \
     -G "$generator"
