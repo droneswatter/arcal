@@ -55,6 +55,25 @@ def load_ns_map(path: Path) -> dict:
     return {**PROTECTED_NS_MAP, **user_map}
 
 
+def write_text_if_changed(path: Path, content: str) -> bool:
+    """Write content atomically, preserving mtime when the file is unchanged."""
+    encoded = content.encode("utf-8")
+    try:
+        if path.read_bytes() == encoded:
+            return False
+    except FileNotFoundError:
+        pass
+
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    try:
+        tmp.write_bytes(encoded)
+        tmp.replace(path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    return True
+
+
 def xsd_name_to_cxx(name: str) -> str:
     """Convert XSD type name to CamelCase C++ class name."""
     if not name:
@@ -2127,47 +2146,47 @@ def main():
         ge = global_element_for_type.get(name)
         type_header_name = f"{xsd_name_to_cxx(name)}.h"
         out_path = type_out_dir / type_header_name
-        out_path.write_text(render_type(type_model, uci_version, global_element=ge))
+        write_text_if_changed(out_path, render_type(type_model, uci_version, global_element=ge))
         written_type_headers.add(type_header_name)
         generated += 1
 
         if not type_model.is_simple_restriction:
             impl_header_name = f"{xsd_name_to_cxx(name)}Impl.h"
             impl_path = impl_out_dir / impl_header_name
-            impl_path.write_text(render_type_impl(type_model))
+            write_text_if_changed(impl_path, render_type_impl(type_model))
             written_impl_headers.add(impl_header_name)
 
             cdr_source_name = f"{xsd_name_to_cxx(name)}_cdr.cpp"
             cdr_path = cdr_out_dir / cdr_source_name
-            cdr_path.write_text(render_cdr_handler(type_model))
+            write_text_if_changed(cdr_path, render_cdr_handler(type_model))
             written_cdr_sources.add(cdr_source_name)
             cdr_generated += 1
 
             json_source_name = f"{xsd_name_to_cxx(name)}_json.cpp"
             json_path = json_out_dir / json_source_name
-            json_path.write_text(render_json_handler(type_model))
+            write_text_if_changed(json_path, render_json_handler(type_model))
             written_json_sources.add(json_source_name)
 
         type_models.append(type_model)
 
-    (type_out_dir / "accessorType.h").write_text(render_accessor_type_h(type_models))
+    write_text_if_changed(type_out_dir / "accessorType.h", render_accessor_type_h(type_models))
     written_type_headers.add("accessorType.h")
-    (cdr_out_dir / "cdr_register_all.cpp").write_text(render_cdr_register_all(type_models))
+    write_text_if_changed(cdr_out_dir / "cdr_register_all.cpp", render_cdr_register_all(type_models))
     written_cdr_sources.add("cdr_register_all.cpp")
-    (json_out_dir / "json_register_all.cpp").write_text(render_json_register_all(type_models))
+    write_text_if_changed(json_out_dir / "json_register_all.cpp", render_json_register_all(type_models))
     written_json_sources.add("json_register_all.cpp")
-    (cdr_out_dir / "type_lifecycle_all.cpp").write_text(render_type_lifecycle(type_models))
+    write_text_if_changed(cdr_out_dir / "type_lifecycle_all.cpp", render_type_lifecycle(type_models))
     written_cdr_sources.add("type_lifecycle_all.cpp")
 
     for elem in selected_global_elements:
         out_path = type_out_dir / f"{elem.cxx_name}.h"
-        out_path.write_text(render_global_element(elem))
+        write_text_if_changed(out_path, render_global_element(elem))
         written_type_headers.add(f"{elem.cxx_name}.h")
         generated += 1
 
-    (cdr_out_dir / "factories_all.cpp").write_text(render_factory_all(selected_global_elements))
+    write_text_if_changed(cdr_out_dir / "factories_all.cpp", render_factory_all(selected_global_elements))
     written_cdr_sources.add("factories_all.cpp")
-    (cdr_out_dir / "accessor_factory_all.cpp").write_text(render_accessor_factory(selected_global_elements))
+    write_text_if_changed(cdr_out_dir / "accessor_factory_all.cpp", render_accessor_factory(selected_global_elements))
     written_cdr_sources.add("accessor_factory_all.cpp")
 
     for stale_name in existing_type_headers - written_type_headers:
