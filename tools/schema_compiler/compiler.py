@@ -162,6 +162,11 @@ def first_letter_to_lower(s: str) -> str:
     return s[0].lower() + s[1:]
 
 
+def append_unique(items: list[str], value: str) -> None:
+    if value not in items:
+        items.append(value)
+
+
 # Fine-grained accessor type constants for XSD scalar primitives.
 SCALAR_PRIMITIVE_ACCESSOR_CONST_MAP: dict[str, str] = {
     "boolean":      "uci::base::accessorType::booleanAccessor",
@@ -718,11 +723,19 @@ ACCESSOR_H_TEMPLATE = """\
 
 #include "uci/base/Accessor.h"
 #include "uci/base/AbstractServiceBusConnection.h"
+{% if needs_bounded_list %}\
 #include "uci/base/BoundedList.h"
+{% endif %}\
+{% if needs_primitive_accessors %}\
 #include "uci/base/PrimitiveAccessors.h"
+{% endif %}\
+{% if needs_simple_list %}\
 #include "uci/base/SimpleList.h"
+{% endif %}\
 #include "uci/type/accessorType.h"
+{% if needs_xs_accessor_type %}\
 #include "xs/accessorType.h"
+{% endif %}\
 {% if type.uses_uuid %}\
 #include "uci/base/UUID.h"
 {% endif %}\
@@ -734,23 +747,18 @@ ACCESSOR_H_TEMPLATE = """\
 #include "uci/base/Reader.h"
 #include "uci/base/Writer.h"
 {% endif %}\
-{% for field in type.fields %}\
-{% if field.type_name not in primitive_types %}\
-#include "uci/type/{{ field.cxx_type }}.h"
-{% endif %}\
-{% endfor %}\
-{% for choice in type.choices %}\
-{% for v in choice.variants %}\
-{% if v.type_name not in primitive_types %}\
-#include "uci/type/{{ v.cxx_type }}.h"
-{% endif %}\
-{% endfor %}\
+{% for include_type in include_type_headers %}\
+#include "uci/type/{{ include_type }}.h"
 {% endfor %}\
 #include <cstdint>
 #include <string>
 
 namespace uci {
 namespace type {
+
+{% for forward_decl_type in forward_decl_types %}\
+class {{ forward_decl_type }};
+{% endfor %}
 
 {% if type.base_type and type.base_type not in primitive_types %}\
 class {{ type.cxx_name }} : public virtual uci::type::{{ type.base_type }} {
@@ -837,7 +845,7 @@ public:
 {% if not field.type_is_complex %}\
 {% if field.type_is_enum %}\
     virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(typename {{ field.cxx_type | qualify(primitive_types, field.type_name) }}::EnumerationItem v) = 0;
-    {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) { return set{{ field.cxx_name }}(v.getValue()); }
+    {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v);
 {% else %}\
     virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) = 0;
 {% if field.is_text_primitive %}\
@@ -854,7 +862,7 @@ public:
     virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() = 0;
     virtual const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const = 0;
     virtual {{ type.cxx_name }}& set{{ field.cxx_name }}(typename {{ field.cxx_type | qualify(primitive_types, field.type_name) }}::EnumerationItem v) = 0;
-    {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) { return set{{ field.cxx_name }}(v.getValue()); }
+    {{ type.cxx_name }}& set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v);
 {% else %}\
     virtual {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() = 0;
     virtual const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& get{{ field.cxx_name }}() const = 0;
@@ -1204,6 +1212,13 @@ const std::string& {{ type.cxx_name }}::typeName() const {
 {{ type.cxx_name }}::Writer::Writer() = default;
 {{ type.cxx_name }}::Writer::~Writer() = default;
 {% endif %}\
+{% for field in type.fields %}\
+{% if field.type_is_enum and not field.list_kind %}\
+{{ type.cxx_name }}& {{ type.cxx_name }}::set{{ field.cxx_name }}(const {{ field.cxx_type | qualify(primitive_types, field.type_name) }}& v) {
+    return set{{ field.cxx_name }}(v.getValue());
+}
+{% endif %}\
+{% endfor %}
 
 std::string {{ type.cxx_name }}::getUCITypeVersion() {
     return "{{ uci_version }}";
@@ -1582,6 +1597,64 @@ def _storage_qualify_filter(field: FieldModel, primitive_types: set) -> str:
     return _qualify_filter(field.cxx_type, primitive_types, field.type_name)
 
 
+def collect_public_header_dependencies(type_model: TypeModel) -> dict[str, object]:
+    include_type_headers: list[str] = []
+    forward_decl_types: list[str] = []
+    needs_bounded_list = False
+    needs_simple_list = False
+    needs_primitive_accessors = False
+    needs_xs_accessor_type = False
+
+    def add_type_dependency(field: FieldModel, *, allow_enum_forward_decl: bool) -> None:
+        nonlocal needs_primitive_accessors
+        nonlocal needs_xs_accessor_type
+
+        if field.type_name in PRIMITIVE_TYPES or field.is_uuid:
+            return
+
+        if field.type_is_simple_restriction:
+            append_unique(include_type_headers, field.cxx_type)
+            return
+
+        if field.type_is_enum and not allow_enum_forward_decl:
+            append_unique(include_type_headers, field.cxx_type)
+            return
+
+        if field.type_is_generated:
+            append_unique(forward_decl_types, field.cxx_type)
+            return
+
+        append_unique(include_type_headers, field.cxx_type)
+
+    for field in type_model.fields:
+        if field.list_kind == "bounded":
+            needs_bounded_list = True
+            if field.bounded_list_typedef_elem_cxx_type.startswith("uci::base::"):
+                needs_primitive_accessors = True
+            if field.bounded_list_typedef_elem_cxx_type.startswith("xs::"):
+                needs_xs_accessor_type = True
+        if field.list_kind == "unbounded":
+            needs_simple_list = True
+        if field.accessor_type.startswith("xs::"):
+            needs_xs_accessor_type = True
+        add_type_dependency(field, allow_enum_forward_decl=False)
+
+    for choice in type_model.choices:
+        for variant in choice.variants:
+            if variant.accessor_type.startswith("xs::"):
+                needs_xs_accessor_type = True
+            add_type_dependency(variant, allow_enum_forward_decl=True)
+
+    return {
+        "include_type_headers": include_type_headers,
+        "forward_decl_types": forward_decl_types,
+        "needs_bounded_list": needs_bounded_list,
+        "needs_simple_list": needs_simple_list,
+        "needs_primitive_accessors": needs_primitive_accessors,
+        "needs_xs_accessor_type": needs_xs_accessor_type,
+    }
+
+
 def _make_env() -> "Environment":
     from jinja2 import Environment
     env = Environment(keep_trailing_newline=True)
@@ -1605,6 +1678,7 @@ _TMPL_GLOBAL_ELEMENT  = _ENV.from_string(GLOBAL_ELEMENT_H_TEMPLATE)
 
 def render_type(type_model: TypeModel, uci_version: str,
                 global_element: GlobalElementModel | None = None) -> str:
+    public_header_dependencies = collect_public_header_dependencies(type_model)
     if type_model.is_enum:
         tmpl = _TMPL_ENUM
     elif type_model.is_simple_restriction:
@@ -1614,7 +1688,8 @@ def render_type(type_model: TypeModel, uci_version: str,
     return tmpl.render(type=type_model, primitive_types=PRIMITIVE_TYPES,
                        cxx_primitive_map=CXX_PRIMITIVE_MAP, uci_version=uci_version,
                        global_element=global_element, uuid_cxx_type=UUID_CXX_TYPE,
-                       scalar_primitive_types=SCALAR_PRIMITIVE_TYPES)
+                       scalar_primitive_types=SCALAR_PRIMITIVE_TYPES,
+                       **public_header_dependencies)
 
 
 def render_type_impl(type_model: TypeModel) -> str:
