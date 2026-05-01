@@ -758,11 +758,8 @@ class {{ type.cxx_name }} : public virtual uci::type::{{ type.base_type }} {
 class {{ type.cxx_name }} : public virtual uci::base::Accessor {
 {% endif %}\
 public:
-    AccessorType getAccessorType() const noexcept override { return uci::type::accessorType::{{ type.cxx_name | first_letter_lower }}; }
-    const std::string& typeName() const override {
-        static const std::string kName{"{{ type.name }}"};
-        return kName;
-    }
+    AccessorType getAccessorType() const noexcept override;
+    const std::string& typeName() const override;
     virtual void copy(const {{ type.cxx_name }}& rhs) = 0;
     static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb = nullptr);
     static {{ type.cxx_name }}& create(const {{ type.cxx_name }}& rhs,
@@ -889,7 +886,7 @@ public:
 {% endfor %}\
 {% endfor %}\
 
-    static std::string getUCITypeVersion() { return "{{ uci_version }}"; }
+    static std::string getUCITypeVersion();
 
 protected:
     {{ type.cxx_name }}();
@@ -1186,6 +1183,15 @@ const {{ v.cxx_type | qualify(primitive_types, v.type_name) }}& {{ type.cxx_name
 
 namespace uci { namespace type {
 
+{{ type.cxx_name }}::AccessorType {{ type.cxx_name }}::getAccessorType() const noexcept {
+    return uci::type::accessorType::{{ type.cxx_name | first_letter_lower }};
+}
+
+const std::string& {{ type.cxx_name }}::typeName() const {
+    static const std::string kName{"{{ type.name }}"};
+    return kName;
+}
+
 {{ type.cxx_name }}::{{ type.cxx_name }}() = default;
 {{ type.cxx_name }}::{{ type.cxx_name }}(const {{ type.cxx_name }}&) = default;
 {{ type.cxx_name }}& {{ type.cxx_name }}::operator=(const {{ type.cxx_name }}&) = default;
@@ -1198,6 +1204,10 @@ namespace uci { namespace type {
 {{ type.cxx_name }}::Writer::Writer() = default;
 {{ type.cxx_name }}::Writer::~Writer() = default;
 {% endif %}\
+
+std::string {{ type.cxx_name }}::getUCITypeVersion() {
+    return "{{ uci_version }}";
+}
 
 {{ type.cxx_name }}& {{ type.cxx_name }}::create(uci::base::AbstractServiceBusConnection*) {
     return *new arcal::type::{{ type.cxx_name }}Impl{};
@@ -1269,11 +1279,8 @@ public:
         enumMaxExclusive,
     };
 
-    AccessorType getAccessorType() const noexcept override { return uci::type::accessorType::{{ type.cxx_name | first_letter_lower }}; }
-    const std::string& typeName() const override {
-        static const std::string kName{"{{ type.name }}"};
-        return kName;
-    }
+    AccessorType getAccessorType() const noexcept override;
+    const std::string& typeName() const override;
 
     virtual void copy(const {{ type.cxx_name }}& rhs) = 0;
     static {{ type.cxx_name }}& create(uci::base::AbstractServiceBusConnection* asb = nullptr);
@@ -1425,6 +1432,15 @@ void {{ type.cxx_name }}Impl::setValue(EnumerationItem v) { value_ = v; }
 } // namespace arcal
 
 namespace uci { namespace type {
+
+{{ type.cxx_name }}::AccessorType {{ type.cxx_name }}::getAccessorType() const noexcept {
+    return uci::type::accessorType::{{ type.cxx_name | first_letter_lower }};
+}
+
+const std::string& {{ type.cxx_name }}::typeName() const {
+    static const std::string kName{"{{ type.name }}"};
+    return kName;
+}
 
 {{ type.cxx_name }}::{{ type.cxx_name }}() = default;
 {{ type.cxx_name }}::{{ type.cxx_name }}(const {{ type.cxx_name }}&) = default;
@@ -1610,6 +1626,7 @@ def render_type_impl(type_model: TypeModel) -> str:
 
 
 def render_type_impl_cpp(type_model: TypeModel,
+                         uci_version: str,
                          global_element: GlobalElementModel | None = None) -> str:
     if type_model.is_enum:
         tmpl = _TMPL_ENUM_IMPL_CPP
@@ -1620,6 +1637,7 @@ def render_type_impl_cpp(type_model: TypeModel,
         primitive_types=PRIMITIVE_TYPES,
         type_tag=fnv1a32(type_model.name),
         global_element=global_element,
+        uci_version=uci_version,
     )
 
 
@@ -2383,7 +2401,7 @@ def main():
 
             impl_source_name = f"{xsd_name_to_cxx(name)}Impl.cpp"
             impl_source_path = impl_out_dir / impl_source_name
-            write_text_if_changed(impl_source_path, render_type_impl_cpp(type_model, ge))
+            write_text_if_changed(impl_source_path, render_type_impl_cpp(type_model, uci_version, ge))
             written_impl_sources.add(impl_source_name)
 
             cdr_source_name = f"{xsd_name_to_cxx(name)}_cdr.cpp"
