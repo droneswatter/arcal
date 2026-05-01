@@ -27,7 +27,7 @@ cxx_compiler="${CMAKE_CXX_COMPILER:-clang++-20}"
 c_compiler="${CMAKE_C_COMPILER:-clang-20}"
 generator="${CMAKE_GENERATOR:-Ninja}"
 build_parallel="${CMAKE_BUILD_PARALLEL_LEVEL:-8}"
-unity_batch_size="${ARCAL_UNITY_BATCH_SIZE:-8}"
+unity_batch_size="${ARCAL_UNITY_BATCH_SIZE:-100}"
 
 arcal_suspend_cpptools
 trap 'arcal_resume_cpptools' EXIT

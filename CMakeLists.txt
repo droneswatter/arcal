@@ -14,7 +14,7 @@ include(CMakePackageConfigHelpers)
 # Dependencies
 # ---------------------------------------------------------------------------
 
-set(ARCAL_UNITY_BATCH_SIZE "15" CACHE STRING "Number of source files per unity build batch")
+set(ARCAL_UNITY_BATCH_SIZE "100" CACHE STRING "Number of source files per unity build batch")
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 

@@ -756,10 +756,6 @@ ACCESSOR_H_TEMPLATE = """\
 namespace uci {
 namespace type {
 
-{% for forward_decl_type in forward_decl_types %}\
-class {{ forward_decl_type }};
-{% endfor %}
-
 {% if type.base_type and type.base_type not in primitive_types %}\
 class {{ type.cxx_name }} : public virtual uci::type::{{ type.base_type }} {
 {% else %}\
@@ -1599,29 +1595,13 @@ def _storage_qualify_filter(field: FieldModel, primitive_types: set) -> str:
 
 def collect_public_header_dependencies(type_model: TypeModel) -> dict[str, object]:
     include_type_headers: list[str] = []
-    forward_decl_types: list[str] = []
     needs_bounded_list = False
     needs_simple_list = False
     needs_primitive_accessors = False
     needs_xs_accessor_type = False
 
-    def add_type_dependency(field: FieldModel, *, allow_enum_forward_decl: bool) -> None:
-        nonlocal needs_primitive_accessors
-        nonlocal needs_xs_accessor_type
-
+    def add_type_dependency(field: FieldModel) -> None:
         if field.type_name in PRIMITIVE_TYPES or field.is_uuid:
-            return
-
-        if field.type_is_simple_restriction:
-            append_unique(include_type_headers, field.cxx_type)
-            return
-
-        if field.type_is_enum and not allow_enum_forward_decl:
-            append_unique(include_type_headers, field.cxx_type)
-            return
-
-        if field.type_is_generated:
-            append_unique(forward_decl_types, field.cxx_type)
             return
 
         append_unique(include_type_headers, field.cxx_type)
@@ -1637,17 +1617,16 @@ def collect_public_header_dependencies(type_model: TypeModel) -> dict[str, objec
             needs_simple_list = True
         if field.accessor_type.startswith("xs::"):
             needs_xs_accessor_type = True
-        add_type_dependency(field, allow_enum_forward_decl=False)
+        add_type_dependency(field)
 
     for choice in type_model.choices:
         for variant in choice.variants:
             if variant.accessor_type.startswith("xs::"):
                 needs_xs_accessor_type = True
-            add_type_dependency(variant, allow_enum_forward_decl=True)
+            add_type_dependency(variant)
 
     return {
         "include_type_headers": include_type_headers,
-        "forward_decl_types": forward_decl_types,
         "needs_bounded_list": needs_bounded_list,
         "needs_simple_list": needs_simple_list,
         "needs_primitive_accessors": needs_primitive_accessors,

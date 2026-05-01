@@ -90,7 +90,7 @@ vcpkg will automatically install `cyclonedds[idlc]`, `cyclonedds-cxx[idllib]`,
 
 ### Build resources
 
-The generated CDR codec is the heaviest part of the build. Peak memory scales with compiler choice, unity batch size, and parallelism. The defaults target an 8-core host with about 12 GB of RAM: `-j8` and `ARCAL_UNITY_BATCH_SIZE=8`. If the build runs out of memory, reduce the job count first, then reduce `ARCAL_UNITY_BATCH_SIZE`.
+The generated CDR codec is the heaviest part of the build. Peak memory scales with compiler choice, unity batch size, and parallelism. The defaults target an 8-core host with about 12 GB of RAM: `-j8` and `ARCAL_UNITY_BATCH_SIZE=100`. If the build runs out of memory, reduce the job count first, then reduce `ARCAL_UNITY_BATCH_SIZE`.
 
 The build scripts temporarily suspend VS Code C/C++ `cpptools` processes while compiling so editor parsing does not compete with `clang++`. Set `ARCAL_SUSPEND_CPPTOOLS=OFF` to opt out.
 
@@ -141,12 +141,12 @@ bash scripts/build.sh
 | `ARCAL_BUILD_EXAMPLES` | `OFF` | Build optional example applications |
 | `ARCAL_BUILD_LACAL` | `ON` | Build `arlacal-server`, the WebSocket/OWP language-agnostic CAL bridge |
 | `ARCAL_USE_MOLD_LINKER` | `ON` | Use `mold` for linking when it is available; falls back to the compiler default linker |
-| `ARCAL_UNITY_BATCH_SIZE` | `8` | Source files per unity build batch; increase to reduce compile time at the cost of higher peak memory |
+| `ARCAL_UNITY_BATCH_SIZE` | `100` | Source files per unity build batch; increase to reduce compile time at the cost of higher peak memory |
 | `ARCAL_SUBSET_CONFIGS` | empty | Semicolon-separated JSON subset configs that build additional installable CAL libraries such as `arcal-simple` |
 
 Example:
 ```bash
-cmake -S . -B build -DARCAL_UNITY_BATCH_SIZE=8 -G Ninja
+cmake -S . -B build -DARCAL_UNITY_BATCH_SIZE=100 -G Ninja
 ```
 
 ### Subset CALs
