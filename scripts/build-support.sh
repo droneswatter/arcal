@@ -34,3 +34,13 @@ arcal_resume_cpptools() {
     kill -CONT "${ARCAL_SUSPENDED_CPPTOOLS_PIDS[@]}" 2>/dev/null || true
     ARCAL_SUSPENDED_CPPTOOLS_PIDS=()
 }
+
+# Given a subset config JSON path, echo the CMake target base name.
+# Mirrors string(MAKE_C_IDENTIFIER) used in arcal_add_subset().
+arcal_target_name_for_config() {
+    local config_path="$1"
+    local suffix
+    suffix=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['cal_name_suffix'])" "$config_path")
+    local name="arcal-${suffix}"
+    echo "${name//[^a-zA-Z0-9_]/_}"
+}

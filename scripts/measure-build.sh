@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run a clean generated-code build while polling /proc/meminfo to track peak
 # memory usage.
-# Usage: ./scripts/measure-build.sh [cmake --build args...]
-#   e.g. ./scripts/measure-build.sh -j8
+# Usage: ./scripts/measure-build.sh full|<subset-config.json> [cmake --build args...]
+#   e.g. ./scripts/measure-build.sh config/subsets/arcal-busmon-cert.json -j8
 
 set -euo pipefail
 
@@ -14,39 +14,48 @@ source "$SCRIPT_DIR/build-support.sh"
 
 cd "$ROOT"
 
+usage() {
+    echo "usage: $0 full|<subset-config.json> [cmake --build args...]" >&2
+    exit 2
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+variant="$1"
+shift
+
 PREFIX="${ARCAL_PREFIX:-$HOME/.local}"
 BUILD_TYPE="${CMAKE_BUILD_TYPE:-Debug}"
 CXX_COMPILER="${CMAKE_CXX_COMPILER:-clang++-20}"
 C_COMPILER="${CMAKE_C_COMPILER:-clang-20}"
-BUILD_DIR="${ARCAL_BUILD_DIR:-build}"
 UNITY_BATCH_SIZE="${ARCAL_UNITY_BATCH_SIZE:-100}"
-SUBSET_CONFIGS="${ARCAL_SUBSET_CONFIGS:-}"
-SUMMARY_FILE="${ARCAL_MEASURE_SUMMARY_FILE:-$BUILD_DIR/measure-build-summary.txt}"
 BUILD_ARGS=("$@")
 if [[ ${#BUILD_ARGS[@]} -eq 0 ]]; then
     BUILD_ARGS=(-j "${CMAKE_BUILD_PARALLEL_LEVEL:-8}")
 fi
 
-BUILD_TARGETS=()
-if [[ -n "$SUBSET_CONFIGS" ]]; then
-    while IFS= read -r target; do
-        [[ -n "$target" ]] && BUILD_TARGETS+=("$target")
-    done < <(
-        SUBSET_CONFIGS="$SUBSET_CONFIGS" python3 - <<'PY'
-import json
-import os
-from pathlib import Path
-
-configs = [c for c in os.environ["SUBSET_CONFIGS"].split(";") if c]
-for config in configs:
-    data = json.loads(Path(config).read_text())
-    subset_name = f'arcal-{data["cal_name_suffix"]}'
-    target_base = "".join(ch if ch.isalnum() else "_" for ch in subset_name)
-    print(target_base)
-    print(f"{target_base}_externalizer_json")
-PY
-    )
+# Resolve variant → build dir, subset config, targets to build
+if [[ "$variant" == "full" ]]; then
+    BUILD_DIR="${ARCAL_BUILD_DIR:-build}"
+    SUBSET_CONFIGS=""
+    BUILD_TARGETS=()
+else
+    config_path="$variant"
+    [[ ! -f "$config_path" ]] && config_path="$ROOT/$variant"
+    if [[ ! -f "$config_path" ]]; then
+        echo "error: not a file: $variant" >&2
+        usage
+    fi
+    suffix=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['cal_name_suffix'])" "$config_path")
+    BUILD_DIR="${ARCAL_BUILD_DIR:-build-${suffix}}"
+    SUBSET_CONFIGS="$config_path"
+    _target=$(arcal_target_name_for_config "$config_path")
+    BUILD_TARGETS=("$_target" "${_target}_externalizer_json")
 fi
+
+SUMMARY_FILE="${ARCAL_MEASURE_SUMMARY_FILE:-$BUILD_DIR/measure-build-summary.txt}"
 
 mem_total=$(awk '/MemTotal/{print $2}' /proc/meminfo)
 TMPFILE=$(mktemp)
@@ -89,7 +98,7 @@ if [[ -d "$BUILD_DIR" ]]; then
 fi
 
 echo "Cleaning generated schema output..."
-rm -rf include/uci/type src/generated build/
+rm -rf include/uci/type src/generated "$BUILD_DIR"
 
 if [[ -z "$SUBSET_CONFIGS" ]]; then
     echo "Regenerating schema headers and externalizer handlers..."

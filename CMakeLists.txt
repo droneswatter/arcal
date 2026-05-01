@@ -134,17 +134,22 @@ function(arcal_add_subset subset_config_path)
 
     file(MAKE_DIRECTORY "${subset_include_dir}")
 
-    execute_process(
-        COMMAND uv run python3
-                ${CMAKE_SOURCE_DIR}/tools/schema_compiler/compiler.py
-                --schema ${SCHEMA_DIR}
-                --out ${subset_include_dir}
-                --subset-config ${subset_config_abs}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        RESULT_VARIABLE subset_generate_result
-    )
-    if(NOT subset_generate_result EQUAL 0)
-        message(FATAL_ERROR "Subset schema generation failed for ${subset_name}")
+    if(NOT EXISTS "${subset_stamp}"
+       OR "${subset_config_abs}" IS_NEWER_THAN "${subset_stamp}")
+        message(STATUS "Generating subset sources for ${subset_name}...")
+        execute_process(
+            COMMAND uv run python3
+                    ${CMAKE_SOURCE_DIR}/tools/schema_compiler/compiler.py
+                    --schema ${SCHEMA_DIR}
+                    --out ${subset_include_dir}
+                    --subset-config ${subset_config_abs}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            RESULT_VARIABLE subset_generate_result
+        )
+        if(NOT subset_generate_result EQUAL 0)
+            message(FATAL_ERROR "Subset schema generation failed for ${subset_name}")
+        endif()
+        file(TOUCH "${subset_stamp}")
     endif()
 
     file(GLOB_RECURSE subset_cdr_generated_sources
@@ -507,12 +512,6 @@ if(ARCAL_HAVE_FULL_GENERATED)
 else()
     message(STATUS "Full generated source tree not present; skipping main arcal targets.")
     set(ARCAL_CAL_VARIANTS "")
-endif()
-
-# Use mold linker if available — significantly faster than ld/lld for large targets.
-find_program(MOLD_LINKER mold)
-if(MOLD_LINKER)
-    add_link_options(-fuse-ld=mold)
 endif()
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 full|busmon-cert [-- <extra cmake args>]" >&2
+    echo "usage: $0 full|<subset-config.json> [-- <extra cmake args>]" >&2
 }
 
 if [[ $# -lt 1 ]]; then
@@ -32,28 +32,31 @@ unity_batch_size="${ARCAL_UNITY_BATCH_SIZE:-100}"
 arcal_suspend_cpptools
 trap 'arcal_resume_cpptools' EXIT
 
-case "$variant" in
-    full)
-        build_dir="${ARCAL_BUILD_DIR:-$root/build}"
-        cert_cal="arcal"
-        json_plugin="arcal_externalizer_json"
-        lacal_target="arlacal_server"
-        example_prefix="arcal"
-        subset_args=()
-        ;;
-    busmon-cert)
-        build_dir="${ARCAL_BUILD_DIR:-$root/build-busmon-cert}"
-        cert_cal="arcal_busmon_cert"
-        json_plugin="arcal_busmon_cert_externalizer_json"
-        lacal_target="arlacal_server_busmon_cert"
-        example_prefix="arcal_busmon_cert"
-        subset_args=("-DARCAL_SUBSET_CONFIGS=$root/config/subsets/arcal-busmon-cert.json")
-        ;;
-    *)
+if [[ "$variant" == "full" ]]; then
+    build_dir="${ARCAL_BUILD_DIR:-$root/build}"
+    cert_cal="arcal"
+    json_plugin="arcal_externalizer_json"
+    lacal_target="arlacal_server"
+    example_prefix="arcal"
+    subset_args=()
+else
+    config_path="$variant"
+    [[ ! -f "$config_path" ]] && config_path="$root/$variant"
+    if [[ ! -f "$config_path" ]]; then
+        echo "error: not a file: $variant" >&2
         usage
         exit 2
-        ;;
-esac
+    fi
+    suffix=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['cal_name_suffix'])" "$config_path")
+    subset_name="arcal-${suffix}"
+    cert_cal="${subset_name//[^a-zA-Z0-9_]/_}"
+    json_plugin="${cert_cal}_externalizer_json"
+    lacal_name="arlacal-server-${suffix}"
+    lacal_target="${lacal_name//[^a-zA-Z0-9_]/_}"
+    example_prefix="$cert_cal"
+    build_dir="${ARCAL_BUILD_DIR:-$root/build-${suffix}}"
+    subset_args=("-DARCAL_SUBSET_CONFIGS=$config_path")
+fi
 
 cmake -S "$root" -B "$build_dir" \
     -DCMAKE_CXX_COMPILER="$cxx_compiler" \
